@@ -1,0 +1,50 @@
+---
+interface Props {
+  size?: "sm" | "md" | "lg";
+  showTagline?: boolean;
+  className?: string;
+}
+
+const { size = "md", showTagline = false, className = "" } = Astro.props;
+
+const iconSizes = {
+  sm: "w-7 h-7",
+  md: "w-9 h-9",
+  lg: "w-12 h-12",
+};
+
+const textSizes = {
+  sm: "text-lg",
+  md: "text-xl",
+  lg: "text-2xl",
+};
+---
+
+<a href="/" class={`inline-flex items-center gap-2.5 group select-none no-underline ${className}`}>
+  <!-- Brand Ribbon Wave Logo -->
+  <div class={`relative flex-shrink-0 transition-transform duration-300 group-hover:scale-105 ${iconSizes[size]}`}>
+    <img 
+      src="/assets/images/logo-ribbon.png" 
+      alt="Mahir Logo" 
+      class="w-full h-full object-contain filter drop-shadow-[0_2px_4px_rgba(16,185,129,0.2)]"
+      loading="eager"
+    />
+  </div>
+
+  <!-- Brand Logotype -->
+  <div class="flex flex-col leading-none">
+    <div class="flex items-center gap-1.5">
+      <span class={`font-extrabold tracking-tight text-slate-900 group-hover:text-slate-800 transition-colors ${textSizes[size]}`}>
+        Mahir
+      </span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase text-white bg-gradient-to-r from-emerald-500 to-teal-600 shadow-xs">
+        SMS
+      </span>
+    </div>
+    {showTagline && (
+      <span class="text-[10px] font-medium tracking-normal text-slate-500 mt-0.5">
+        School Management System
+      </span>
+    )}
+  </div>
+</a>

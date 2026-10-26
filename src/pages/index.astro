@@ -1,17 +1,253 @@
 ---
+import BaseLayout from "../layouts/baselayout.astro";
+import "../styles/global.css";
 
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Mahir School Management System</title>
-	</head>
-	<body>
-		<h1>Welcome to Mahir School Management System</h1>
-	</body>
-</html>
+<BaseLayout 
+  title="Solusi Cerdas Manajemen Sekolah" 
+  description="Platform terpadu pengelolaan akademik, kurikulum multisensori, siswa, dan guru untuk institusi pendidikan modern."
+>
+  <!-- Hero Section with Background Glow -->
+  <section class="relative overflow-hidden pt-12 pb-20 lg:pt-20 lg:pb-28 bg-gradient-to-b from-slate-50 via-white to-slate-50">
+    <!-- Subtle Background Ambient Blurs -->
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-emerald-400/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute top-1/3 right-10 w-[400px] h-[300px] bg-[#5C6096]/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div class="text-center max-w-3xl mx-auto">
+        <!-- Badge -->
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-6 shadow-xs animate-fade-in">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          Platform Manajemen Sekolah & Kurikulum Terpadu
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.15] mb-6">
+          Kelola Sekolah Lebih <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">Cerdas</span> & Terintegrasi
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-base sm:text-lg text-slate-600 leading-relaxed mb-8 max-w-2xl mx-auto font-normal">
+          Sistem manajemen terpusat untuk siswa, pendidik, dan modul kurikulum multisensori Mahir. Mempermudah administrasi akademik dan pelaporan belajar secara real-time.
+        </p>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-12">
+          <a href="/signin" class="btn-primary w-full sm:w-auto text-base !py-3 !px-7 flex items-center justify-center gap-2">
+            <span>Masuk ke Portal</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </a>
+          <a href="/about" class="btn-outline w-full sm:w-auto text-base !py-3 !px-7 flex items-center justify-center gap-2">
+            <span>Pelajari Kurikulum</span>
+          </a>
+        </div>
+
+        <!-- Trust Mini-Bar -->
+        <div class="flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-semibold text-slate-500">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 font-bold">✓</span> Berbasis Cloud Real-time
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 font-bold">✓</span> Metode Multisensori Mahir
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-600 font-bold">✓</span> Akses Multi-Peran Terpadu
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard Interactive Preview Mockup -->
+      <div class="mt-14 max-w-5xl mx-auto">
+        <div class="rounded-2xl glass-card p-3 sm:p-5 shadow-2xl border border-slate-200/90 relative">
+          <!-- Window Header Bar -->
+          <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-rose-400"></div>
+              <div class="w-3 h-3 rounded-full bg-amber-400"></div>
+              <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
+              <span class="text-xs font-medium text-slate-400 ml-2">portal.mahir-sms.edu / dashboard</span>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 text-xs font-semibold text-slate-500">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Sistem Aktif
+            </div>
+          </div>
+
+          <!-- Mockup Content Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Metric 1: Siswa Aktif -->
+            <div class="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-white border border-emerald-100">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Siswa Aktif</span>
+                <span class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-xs">👥</span>
+              </div>
+              <div class="text-2xl font-extrabold text-slate-900 mb-1">1,420</div>
+              <p class="text-[11px] text-emerald-700 font-medium">↑ 12% peningkatan semester ini</p>
+            </div>
+
+            <!-- Metric 2: Modul Belajar -->
+            <div class="p-4 rounded-xl bg-gradient-to-br from-[#5C6096]/5 to-white border border-[#5C6096]/20">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Modul Multisensori</span>
+                <span class="w-7 h-7 rounded-lg bg-[#5C6096]/10 text-[#5C6096] flex items-center justify-center font-bold text-xs">📚</span>
+              </div>
+              <div class="text-2xl font-extrabold text-slate-900 mb-1">68 Modul</div>
+              <p class="text-[11px] text-[#5C6096] font-medium">Tersedia untuk Kelas 1 - 6 SD</p>
+            </div>
+
+            <!-- Metric 3: Rata-rata Evaluasi -->
+            <div class="p-4 rounded-xl bg-gradient-to-br from-[#B4CD4B]/10 to-white border border-[#B4CD4B]/30">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Tingkat Ketuntasan</span>
+                <span class="w-7 h-7 rounded-lg bg-[#B4CD4B]/20 text-[#718617] flex items-center justify-center font-bold text-xs">⭐</span>
+              </div>
+              <div class="text-2xl font-extrabold text-slate-900 mb-1">94.8%</div>
+              <p class="text-[11px] text-[#718617] font-medium">Berdasarkan hasil asesmen formatif</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Features / Pillars Grid -->
+  <section class="py-16 lg:py-24 bg-white border-y border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-2xl mx-auto mb-16">
+        <span class="text-xs font-bold uppercase tracking-wider text-emerald-600">Fitur Utama</span>
+        <h2 class="text-3xl font-extrabold text-slate-900 mt-2 tracking-tight">
+          Dirancang untuk Kebutuhan Sekolah Modern
+        </h2>
+        <p class="text-sm text-slate-600 mt-3">
+          Memadukan manajemen kepegawaian dan kesiswaan dengan kurikulum matematika multisensori unggulan Mahir.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Feature 1: Academic & Students -->
+        <div class="glass-card glass-card-hover p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-5 text-xl font-bold">
+              👨‍🎓
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Manajemen Siswa & Kelas</h3>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Pencatatan profil siswa, pembagian rombel/kelas, riwayat kehadiran, dan monitoring perkembangan individual secara akurat.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-semibold text-emerald-600">
+            Terpusat & Otomatis &rarr;
+          </div>
+        </div>
+
+        <!-- Feature 2: Multisensory Curriculum -->
+        <div class="glass-card glass-card-hover p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-[#5C6096]/15 text-[#5C6096] flex items-center justify-center mb-5 text-xl font-bold">
+              🧩
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Kurikulum Multisensori</h3>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Materi ajar berbasis prinsip interaktif: Lihat, Dengar, Lakukan, Catat, dan Repetisi Bermakna untuk memastikan pemahaman konseptual.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-semibold text-[#5C6096]">
+            Metode Mahir Edu &rarr;
+          </div>
+        </div>
+
+        <!-- Feature 3: Asesmen Cepat -->
+        <div class="glass-card glass-card-hover p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center mb-5 text-xl font-bold">
+              📊
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Asesmen & Penilaian</h3>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Penyusunan tes diagnostik, formatif, dan sumatif dengan analisis butir soal dan rekapitulasi nilai otomatis tanpa repot.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-semibold text-sky-600">
+            Analitik Instan &rarr;
+          </div>
+        </div>
+
+        <!-- Feature 4: Laporan & Portofolio -->
+        <div class="glass-card glass-card-hover p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-[#B4CD4B]/20 text-[#607312] flex items-center justify-center mb-5 text-xl font-bold">
+              📈
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Laporan & Rapor Cerdas</h3>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Cetak rapor dan bagikan ringkasan pencapaian kompetensi langsung ke orang tua dengan transparansi grafik pertumbuhan belajar.
+            </p>
+          </div>
+          <div class="mt-6 pt-4 border-t border-slate-100 flex items-center text-xs font-semibold text-[#718617]">
+            Mudah & Transparan &rarr;
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Educational Methodology Section -->
+  <section class="py-16 bg-slate-50 relative overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="rounded-3xl bg-gradient-to-r from-slate-900 via-[#40436B] to-slate-900 p-8 sm:p-12 text-white relative shadow-xl overflow-hidden">
+        <!-- Decorative Glow -->
+        <div class="absolute -right-16 -top-16 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-7">
+            <span class="inline-block px-3 py-1 rounded-md bg-emerald-500/20 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-4 border border-emerald-500/30">
+              Filosofi Pembelajaran Mahir
+            </span>
+            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
+              Semua Anak Bisa Mahir Lewat Pembelajaran Multisensori
+            </h2>
+            <p class="text-sm text-slate-300 leading-relaxed mb-6 font-normal">
+              Kami percaya bahwa matematika dan literasi paling baik dikuasai bukan dengan hafalan mekanis, melainkan melalui pengalaman langsung multisensori dari mudah ke bertahap.
+            </p>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+              <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                <div class="text-base font-bold text-emerald-400">1</div>
+                <div class="text-xs font-semibold text-white mt-1">LIHAT</div>
+              </div>
+              <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                <div class="text-base font-bold text-sky-400">2</div>
+                <div class="text-xs font-semibold text-white mt-1">DENGAR</div>
+              </div>
+              <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                <div class="text-base font-bold text-[#B4CD4B]">3</div>
+                <div class="text-xs font-semibold text-white mt-1">LAKUKAN</div>
+              </div>
+              <div class="p-3 rounded-xl bg-white/5 border border-white/10">
+                <div class="text-base font-bold text-amber-400">4</div>
+                <div class="text-xs font-semibold text-white mt-1">CATAT</div>
+              </div>
+              <div class="p-3 rounded-xl bg-white/5 border border-white/10 col-span-2 sm:col-span-1">
+                <div class="text-base font-bold text-rose-400">5</div>
+                <div class="text-xs font-semibold text-white mt-1">REPETISI</div>
+              </div>
+            </div>
+          </div>
+          <div class="lg:col-span-5 flex justify-center">
+            <div class="p-6 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-center max-w-sm w-full">
+              <img src="/assets/images/logo-banner.png" alt="Mahir Matematika Banner Logo" class="max-h-20 mx-auto mb-4 object-contain filter drop-shadow" />
+              <p class="text-xs text-slate-200 mb-4 leading-relaxed">
+                Diintegrasikan langsung dengan kurikulum dan instrumen belajar Mahir Matematika.
+              </p>
+              <a href="/about" class="btn-primary w-full text-xs !py-2.5">
+                Pelajari Selengkapnya
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
