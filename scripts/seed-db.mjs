@@ -147,7 +147,7 @@ async function seed() {
   }, { merge: true });
   console.log("✅ Created Gated Lesson Material: mat-multisensory-mod1-ws");
 
-  // 6. Central Calendar Event
+  // 6. Central Calendar Event (Teachers)
   const eventId = "evt-national-workshop-2026";
   const eventDate = Timestamp.fromDate(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000));
   await db.collection("calendar_events").doc(eventId).set({
@@ -171,6 +171,129 @@ async function seed() {
     updatedAt: now,
   }, { merge: true });
   console.log("✅ Created Central Calendar Event: evt-national-workshop-2026");
+
+  // 7. Central Calendar Event (Parents & Prospect Leads)
+  const parentEventId = "evt-parent-webinar-2026";
+  const parentEventDate = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  await db.collection("calendar_events").doc(parentEventId).set({
+    id: parentEventId,
+    title: "Webinar Parenting: Membangun Minat Belajar Matematika Tanpa Rasa Takut",
+    description: "Sesi interaktif daring bagi orang tua & calon wali siswa bersama tim spesialis multisensori Mahir Edu.",
+    eventType: "academic_schedule",
+    startDate: parentEventDate,
+    endDate: parentEventDate,
+    isAllDay: false,
+    locationType: "online",
+    onlineMeetingUrl: "https://meet.google.com/mahir-parenting-2026",
+    targetAudience: {
+      scope: "all_branches",
+      targetRoles: ["parent"],
+    },
+    isMandatory: false,
+    sendEmailNotification: true,
+    createdByUid: hqAdminUid,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  console.log("✅ Created Parent Community Event: evt-parent-webinar-2026");
+
+  // 8. Demo Class & Enrolled Student (For linking verification)
+  const classId = "class-btr-1a";
+  await db.collection("classes").doc(classId).set({
+    id: classId,
+    branchId: branchId,
+    academicYearId: "ay-2026-sem1",
+    name: "Kelas 1-A (Amanah)",
+    gradeLevel: 1,
+    homeroomTeacherUid: "teacher-sarah-demo",
+    homeroomTeacherName: "Sarah Wijaya, S.Pd.",
+    studentCount: 1,
+    isActive: true,
+    createdAt: now,
+  }, { merge: true });
+
+  const studentId = "student-kenzo-001";
+  await db.collection("students").doc(studentId).set({
+    uid: studentId,
+    branchId: branchId,
+    currentClassId: classId,
+    nis: "2026-MHR-001",
+    nisn: "0123456789",
+    fullName: "Kenzo Alfarizi",
+    gender: "male",
+    birthDate: "2019-04-12",
+    parentUids: [],
+    primaryParentEmail: "wali.kenzo@example.com",
+    status: "active",
+    enrolledAt: now,
+  }, { merge: true });
+  console.log("✅ Created Demo Student: Kenzo Alfarizi (NIS: 2026-MHR-001)");
+
+  // 9. Demo Pending Teacher (To test Admin Verification portal)
+  const pendingTeacherUid = "teacher-pending-demo";
+  await db.collection("users").doc(pendingTeacherUid).set({
+    uid: pendingTeacherUid,
+    email: "budi.guru@pemancar-bintaro.sch.id",
+    displayName: "Budi Hartono, S.Pd.",
+    phoneNumber: "081298765432",
+    role: "teacher",
+    branchId: branchId,
+    status: "pending_approval",
+    teacherMetadata: {
+      nip: "198804152011011002",
+      specialization: "Matematika SD & Manipulatif",
+    },
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  await db.collection("teachers").doc(pendingTeacherUid).set({
+    uid: pendingTeacherUid,
+    branchId: branchId,
+    nip: "198804152011011002",
+    fullName: "Budi Hartono, S.Pd.",
+    email: "budi.guru@pemancar-bintaro.sch.id",
+    specializations: ["Matematika SD & Manipulatif"],
+    assignedClassIds: [],
+    isHomeroom: false,
+    createdAt: now,
+  }, { merge: true });
+  console.log("✅ Created Pending Teacher: Budi Hartono (pending_approval)");
+
+  // 10. Demo Prospect Parent
+  const prospectParentUid = "parent-prospect-demo";
+  await db.collection("users").doc(prospectParentUid).set({
+    uid: prospectParentUid,
+    email: "amanda.bunda@gmail.com",
+    displayName: "Amanda Putri (Bunda)",
+    phoneNumber: "081387654321",
+    role: "parent",
+    branchId: branchId,
+    status: "active",
+    parentMetadata: {
+      isProspect: true,
+      studentUids: [],
+      childNames: ["Rafi (Calon Siswa)"],
+      preferredBranchId: branchId,
+    },
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  await db.collection("parents").doc(prospectParentUid).set({
+    uid: prospectParentUid,
+    fullName: "Amanda Putri (Bunda)",
+    email: "amanda.bunda@gmail.com",
+    phone: "081387654321",
+    studentUids: [],
+    emailPreferences: {
+      attendanceAlerts: true,
+      gradeAnnouncements: true,
+      generalAnnouncements: true,
+    },
+    createdAt: now,
+  }, { merge: true });
+  console.log("✅ Created Prospect Parent: Amanda Putri (Active Prospect Lead)");
 
   console.log("🎉 Seeding completed successfully!");
 }

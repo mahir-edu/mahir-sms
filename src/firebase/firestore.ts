@@ -387,3 +387,99 @@ export async function updateUserStatus(params: {
 
   await userRef.update(updateData);
 }
+
+// ==========================================
+// 9. Parent & Student Management Helpers
+// ==========================================
+export async function getUpcomingCalendarEvents(
+  role?: string,
+  branchId?: string
+): Promise<CalendarEventDocument[]> {
+  const snapshot = await collections.calendarEvents()
+    .orderBy("startDate", "asc")
+    .limit(20)
+    .get();
+
+  const nowMs = Date.now() - (12 * 60 * 60 * 1000); // include today's events
+  let events = snapshot.docs.map(doc => doc.data() as CalendarEventDocument);
+
+  events = events.filter(e => {
+    const eventTime = e.startDate?.toMillis ? e.startDate.toMillis() : 0;
+    return eventTime >= nowMs;
+  });
+
+  if (role) {
+    events = events.filter(e =>
+      !e.targetAudience?.targetRoles ||
+      e.targetAudience.targetRoles.includes(role as any)
+    );
+  }
+
+  if (branchId) {
+    events = events.filter(e =>
+      !e.targetAudience?.scope ||
+      e.targetAudience.scope === "all_branches" ||
+      (e.targetAudience.targetBranchIds && e.targetAudience.targetBranchIds.includes(branchId))
+    );
+  }
+
+  return events;
+}
+
+export async function linkStudentToParent(
+  parentUid: string,
+  studentNis: string
+): Promise<{ success: boolean; studentName?: string; error?: string }> {
+  const trimmedNis = studentNis.trim();
+  if (!trimmedNis) {
+    return { success: false, error: "NIS siswa tidak boleh kosong." };
+  }
+
+  // 1. Search student by NIS
+  const snapshot = await collections.students()
+    .where("nis", "==", trimmedNis)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) {
+    return {
+      success: false,
+      error: `Siswa dengan NIS "${trimmedNis}" tidak ditemukan. Pastikan NIS telah sesuai dengan data sekolah.`
+    };
+  }
+
+  const studentDoc = snapshot.docs[0];
+  const student = studentDoc.data() as StudentDocument;
+
+  // 2. Add parentUid to student's parentUids
+  await studentDoc.ref.update({
+    parentUids: FieldValue.arrayUnion(parentUid),
+  });
+
+  // 3. Update Parent document
+  const parentRef = collections.parents().doc(parentUid);
+  await parentRef.set({
+    studentUids: FieldValue.arrayUnion(student.uid),
+  }, { merge: true });
+
+  // 4. Update User document parentMetadata (transitions isProspect to false)
+  const userRef = collections.users().doc(parentUid);
+  await userRef.set({
+    parentMetadata: {
+      isProspect: false,
+      studentUids: FieldValue.arrayUnion(student.uid),
+      childNames: FieldValue.arrayUnion(student.fullName),
+    },
+    updatedAt: Timestamp.now(),
+  }, { merge: true });
+
+  return { success: true, studentName: student.fullName };
+}
+
+export async function getLinkedStudentsForParent(parentUid: string): Promise<StudentDocument[]> {
+  const snapshot = await collections.students()
+    .where("parentUids", "array-contains", parentUid)
+    .get();
+  return snapshot.docs.map(doc => doc.data() as StudentDocument);
+}
+
