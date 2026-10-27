@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Auth & Role Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isHQAdmin() {
+      return isAuthenticated() && getUserData().role == 'hq_admin';
+    }
+    
+    function isBranchAdmin(branchId) {
+      return isAuthenticated() && 
+        getUserData().role == 'branch_admin' && 
+        getUserData().branchId == branchId;
+    }
+
+    function isTeacher(branchId) {
+      return isAuthenticated() && 
+        getUserData().role == 'teacher' && 
+        getUserData().branchId == branchId;
+    }
+
+    function hasActiveBranchLicense(branchId) {
+      let branch = get(/databases/$(database)/documents/branches/$(branchId)).data;
+      return branch.licenseStatus == 'active' || branch.licenseStatus == 'in_grace_period';
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isHQAdmin() || request.auth.uid == userId;
+    }
+
+    // 2. Curriculums & Lesson Plans: HQ Admin writes, authenticated reads
+    match /curriculums/{curriculumId} {
+      allow read: if isAuthenticated();
+      allow write: if isHQAdmin();
+      
+      match /lesson_plans/{planId} {
+        allow read: if isAuthenticated();
+        allow write: if isHQAdmin();
+      }
+    }
+
+    // 3. Lesson Materials: Access gated by active branch license
+    match /lesson_materials/{materialId} {
+      allow write: if isHQAdmin();
+      allow read: if isHQAdmin() || (
+        isAuthenticated() && 
+        getUserData().branchId != null && 
+        hasActiveBranchLicense(getUserData().branchId)
+      );
+    }
+
+    // 4. Central Calendar & Events: HQ Admin manages, branches read relevant events
+    match /calendar_events/{eventId} {
+      allow write: if isHQAdmin();
+      allow read: if isAuthenticated() && (
+        isHQAdmin() ||
+        resource.data.targetAudience.scope == 'all_branches' ||
+        (getUserData().branchId != null && getUserData().branchId in resource.data.targetAudience.targetBranchIds)
+      );
+    }
+
+    // 5. Branches & Licenses: HQ Admin manages, Branch Admin reads own
+    match /branches/{branchId} {
+      allow read: if isAuthenticated() && (isHQAdmin() || getUserData().branchId == branchId);
+      allow write: if isHQAdmin();
+    }
+
+    match /branch_licenses/{licenseId} {
+      allow read: if isAuthenticated() && (isHQAdmin() || getUserData().branchId == resource.data.branchId);
+      allow write: if isHQAdmin();
+    }
+    
+    // 6. Classes & Rosters: Branch Admin & Teachers
+    match /classes/{classId} {
+      allow read: if isAuthenticated() && (isHQAdmin() || getUserData().branchId == resource.data.branchId);
+      allow write: if isHQAdmin() || isBranchAdmin(request.resource.data.branchId);
+    }
+
+    // 7. Students & Parents Profiles
+    match /students/{studentUid} {
+      allow read: if isAuthenticated() && (
+        isHQAdmin() || 
+        getUserData().branchId == resource.data.branchId ||
+        request.auth.uid == studentUid ||
+        request.auth.uid in resource.data.parentUids
+      );
+      allow write: if isHQAdmin() || isBranchAdmin(request.resource.data.branchId);
+    }
+
+    match /parents/{parentUid} {
+      allow read: if isAuthenticated() && (isHQAdmin() || request.auth.uid == parentUid);
+      allow write: if isHQAdmin() || request.auth.uid == parentUid;
+    }
+    
+    // 8. Attendance: Teachers record, Parents view own child's record
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated() && (
+        isHQAdmin() || 
+        getUserData().branchId == resource.data.branchId ||
+        request.auth.uid == resource.data.studentUid ||
+        request.auth.uid in get(/databases/$(database)/documents/students/$(resource.data.studentUid)).data.parentUids
+      );
+      allow write: if isHQAdmin() || isTeacher(request.resource.data.branchId);
+    }
+
+    // 9. Assessments & Grades
+    match /assessments/{assessmentId} {
+      allow read: if isAuthenticated() && (isHQAdmin() || getUserData().branchId == resource.data.branchId);
+      allow write: if isHQAdmin() || isTeacher(request.resource.data.branchId);
+    }
+
+    match /student_grades/{gradeId} {
+      allow read: if isAuthenticated() && (
+        isHQAdmin() || 
+        getUserData().branchId == resource.data.branchId ||
+        request.auth.uid == resource.data.studentUid ||
+        request.auth.uid in get(/databases/$(database)/documents/students/$(resource.data.studentUid)).data.parentUids
+      );
+      allow write: if isHQAdmin() || isTeacher(request.resource.data.branchId);
+    }
+
+    // 10. Notifications: Recipient can read and update
+    match /notifications/{notifId} {
+      allow read, update: if isAuthenticated() && request.auth.uid == resource.data.recipientUid;
+      allow create: if isAuthenticated();
+    }
+
+    // 11. Email Queue: Server-side & HQ Admin only
+    match /email_queue/{emailId} {
+      allow read, write: if isHQAdmin();
+    }
+  }
+}

@@ -10,6 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "start": "node ./dist/server/entry.mjs",
+    "seed": "node scripts/seed-db.mjs",
     "astro": "astro"
   },
   "dependencies": {
