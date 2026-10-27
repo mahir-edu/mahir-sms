@@ -1,43 +1,15 @@
-# Astro Starter Kit: Minimal
+# Mahir School Management System
 
-```sh
-npm create astro@latest -- --template minimal
-```
+## Project Description
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Mahir School Management System is a school management system that is built with Astro and Firebase. With Firebase Firestore, Authentication, and other Firebase services to provide a seamless and efficient school management experience.
 
-## 🚀 Project Structure
+Features:
+- Central (HQ) Admin can manage franchise admin, students, teachers, staff, and other school-related information.
+- Central curriculum and lesson plan can set by the Central (HQ) Admin and can be acceessed by the Pemancar school that have license.
+- Pemancar school (franchise branch) Admin, can manage students, teachers, staff, and other school-related information for their .
+- Teachers can manage their classes, students, and grades.
+- Students can view their grades, attendance, and other school-related information.
+- Parents can view their child's grades, attendance, and other school-related information.
 
-Inside of your Astro project, you'll see the following folders and files:
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
-
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
