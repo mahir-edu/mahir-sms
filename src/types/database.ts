@@ -4,7 +4,7 @@ import type { Timestamp } from "firebase-admin/firestore";
 // User & Role Based Access Control
 // ==========================================
 export type UserRole = 'hq_admin' | 'branch_admin' | 'teacher' | 'student' | 'parent';
-export type UserStatus = 'active' | 'suspended' | 'pending';
+export type UserStatus = 'pending_approval' | 'active' | 'suspended' | 'rejected';
 
 export interface UserDocument {
   uid: string;
@@ -15,6 +15,26 @@ export interface UserDocument {
   role: UserRole;
   branchId?: string | null;
   status: UserStatus;
+  
+  // Role-specific onboarding & verification metadata
+  teacherMetadata?: {
+    nip?: string;
+    specialization?: string;
+    verifiedByUid?: string;
+    verifiedAt?: Timestamp;
+  };
+  
+  parentMetadata?: {
+    isProspect: boolean;              // true if parent is exploring / no student linked yet
+    studentUids: string[];            // Array of enrolled child student IDs
+    childNames?: string[];            // Candidate child names submitted
+    preferredBranchId?: string;
+  };
+
+  approvedByUid?: string;
+  approvedAt?: Timestamp;
+  rejectionReason?: string;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

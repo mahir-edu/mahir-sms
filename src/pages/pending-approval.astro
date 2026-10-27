@@ -1,0 +1,79 @@
+---
+import { app } from "../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { getUserProfile } from "../firebase/firestore";
+import BaseLayout from "../layouts/baselayout.astro";
+import "../styles/global.css";
+
+/* Verify user session */
+const auth = getAuth(app);
+let userProfile = null;
+
+if (Astro.cookies.has("__session")) {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  try {
+    const decoded = await auth.verifySessionCookie(sessionCookie);
+    userProfile = await getUserProfile(decoded.uid);
+    // If user is already active, redirect straight to dashboard
+    if (userProfile && userProfile.status === "active") {
+      return Astro.redirect("/dashboard");
+    }
+  } catch (e) {
+    // Session invalid
+  }
+}
+---
+
+<BaseLayout title="Menunggu Konfirmasi Akun" description="Akun Anda sedang dalam proses verifikasi oleh Central Admin">
+  <div class="min-h-[calc(100vh-14rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-education-pattern">
+    <div class="max-w-lg w-full">
+      <div class="glass-card rounded-2xl p-8 sm:p-10 shadow-xl border border-slate-200/90 relative overflow-hidden text-center">
+        <!-- Top accent line -->
+        <div class="absolute top-0 left-0 right-0 h-1.5 bg-linear-to-r from-amber-400 via-amber-500 to-emerald-500"></div>
+
+        <!-- Clock / Shield Icon -->
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto mb-6 text-2xl shadow-xs">
+          ⏳
+        </div>
+
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold uppercase tracking-wider mb-3 border border-amber-200">
+          <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+          Menunggu Persetujuan Admin
+        </div>
+
+        <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
+          Pendaftaran Berhasil Dikirim!
+        </h1>
+
+        <p class="text-sm text-slate-600 leading-relaxed mb-6 font-normal">
+          Halo <strong class="text-slate-800">{userProfile?.displayName || "Pendidik"}</strong>, akun pendidik Anda telah terdaftar di sistem. Untuk menjaga keamanan data sekolah, Central HQ Admin akan meninjau dan mengonfirmasi profil Anda terlebih dahulu.
+        </p>
+
+        <!-- Information Card -->
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-2.5 mb-6 text-xs text-slate-600">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-700">Peran Akun:</span>
+            <span class="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">Pendidik / Guru</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-700">Status Saat Ini:</span>
+            <span class="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">Sedang Diverifikasi</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-700">Notifikasi:</span>
+            <span>Email konfirmasi akan dikirim ke akun Anda</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <a href="/api/auth/signout" class="btn-outline w-full sm:w-auto text-xs !py-2.5 !px-5">
+            Keluar Akun
+          </a>
+          <a href="/" class="btn-primary w-full sm:w-auto text-xs !py-2.5 !px-5">
+            Kembali ke Beranda
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

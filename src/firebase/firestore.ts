@@ -274,3 +274,116 @@ export async function queueEmailNotification(params: {
   await ref.set(emailDoc);
   return ref.id;
 }
+
+// ==========================================
+// 8. User Management & Verification Helpers
+// ==========================================
+export async function getAllBranches(): Promise<BranchDocument[]> {
+  const snapshot = await collections.branches().orderBy("name", "asc").get();
+  return snapshot.docs.map(doc => doc.data() as BranchDocument);
+}
+
+export async function getAllUsers(filters?: {
+  role?: string;
+  status?: string;
+  branchId?: string;
+}): Promise<UserDocument[]> {
+  let query = collections.users() as FirebaseFirestore.Query;
+
+  if (filters?.role) {
+    query = query.where("role", "==", filters.role);
+  }
+  if (filters?.status) {
+    query = query.where("status", "==", filters.status);
+  }
+  if (filters?.branchId) {
+    query = query.where("branchId", "==", filters.branchId);
+  }
+
+  const snapshot = await query.orderBy("createdAt", "desc").get();
+  return snapshot.docs.map(doc => doc.data() as UserDocument);
+}
+
+export async function updateUserStatus(params: {
+  targetUid: string;
+  newStatus: 'active' | 'suspended' | 'rejected' | 'pending_approval';
+  adminUid: string;
+  reason?: string;
+}): Promise<void> {
+  const userRef = collections.users().doc(params.targetUid);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    throw new Error("Pengguna tidak ditemukan.");
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  const now = Timestamp.now();
+
+  const updateData: Partial<UserDocument> = {
+    status: params.newStatus,
+    updatedAt: now,
+  };
+
+  if (params.newStatus === "active") {
+    updateData.approvedByUid = params.adminUid;
+    updateData.approvedAt = now;
+    updateData.rejectionReason = "";
+
+    // Queue confirmation email
+    await queueEmailNotification({
+      to: userData.email,
+      subject: "Selamat! Akun Mahir SMS Anda Telah Diaktifkan",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #10b981;">Akun Mahir SMS Anda Telah Aktif</h2>
+          <p>Halo <strong>${userData.displayName}</strong>,</p>
+          <p>Kabar gembira! Pendaftaran akun Anda sebagai <strong>${userData.role === "teacher" ? "Pendidik (Guru)" : "Orang Tua / Wali"}</strong> telah diverifikasi dan disetujui oleh Central Admin.</p>
+          <p>Anda sekarang dapat masuk ke portal dan mengakses seluruh fitur akademik:</p>
+          <p style="margin: 24px 0;">
+            <a href="https://mahir-edu.com/signin" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+              Masuk ke Portal Sekarang &rarr;
+            </a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+          <p style="font-size: 12px; color: #888;">Mahir School Management System &bull; Pesan Otomatis</p>
+        </div>
+      `,
+      metadata: {
+        notificationType: "school_announcement",
+        branchId: userData.branchId || "central",
+      },
+    });
+
+    // In-app notification
+    await sendNotification({
+      recipientUid: userData.uid,
+      senderUid: params.adminUid,
+      type: "announcement",
+      title: "Akun Telah Diaktifkan",
+      body: "Selamat, akun Anda telah diverifikasi dan disetujui oleh Administrator.",
+      actionUrl: "/dashboard",
+    });
+
+  } else if (params.newStatus === "rejected") {
+    updateData.rejectionReason = params.reason || "Verifikasi tidak memenuhi persyaratan.";
+
+    // Queue rejection notice
+    await queueEmailNotification({
+      to: userData.email,
+      subject: "Pemberitahuan Status Pendaftaran Akun Mahir SMS",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #e11d48;">Pemberitahuan Pendaftaran Akun</h2>
+          <p>Halo <strong>${userData.displayName}</strong>,</p>
+          <p>Mohon maaf, pendaftaran akun Anda belum dapat disetujui saat ini.</p>
+          ${params.reason ? `<p><strong>Alasan:</strong> ${params.reason}</p>` : ""}
+          <p>Silakan hubungi pihak sekolah atau Central Admin untuk informasi lebih lanjut.</p>
+          <br>
+          <p style="font-size: 12px; color: #888;">Mahir School Management System &bull; Pesan Otomatis</p>
+        </div>
+      `,
+    });
+  }
+
+  await userRef.update(updateData);
+}

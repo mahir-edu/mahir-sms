@@ -1,6 +1,7 @@
 ---
 import { app } from "../firebase/server";
 import { getAuth } from "firebase-admin/auth";
+import { getUserProfile } from "../firebase/firestore";
 import BaseLayout from "../layouts/baselayout.astro";
 import "../styles/global.css";
 
@@ -24,8 +25,16 @@ if (!user) {
   return Astro.redirect("/signin");
 }
 
-const userName = user.displayName || user.email?.split("@")[0] || "Pendidik";
+/* Check Firestore User Profile & Status */
+const userProfile = await getUserProfile(user.uid);
+if (userProfile && userProfile.status === "pending_approval") {
+  return Astro.redirect("/pending-approval");
+}
+
+const isHQAdmin = userProfile?.role === "hq_admin";
+const userName = userProfile?.displayName || user.displayName || user.email?.split("@")[0] || "Pendidik";
 const userEmail = user.email || "";
+const userRole = userProfile?.role || "teacher";
 ---
 
 <BaseLayout title="Dashboard Portal" description="Dashboard manajemen akademik dan kurikulum Mahir SMS">
@@ -243,6 +252,18 @@ const userEmail = user.email || "";
         <div class="glass-card rounded-2xl p-6 shadow-sm border border-slate-200">
           <h2 class="text-base font-bold text-slate-900 mb-3">Aksi Cepat</h2>
           <div class="grid grid-cols-1 gap-2.5">
+            {isHQAdmin && (
+              <a 
+                href="/dashboard/admin/users" 
+                class="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition-all text-xs font-bold"
+              >
+                <span class="w-8 h-8 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center text-sm">👥</span>
+                <div class="flex flex-col text-left">
+                  <span>Kelola Pengguna & Verifikasi</span>
+                  <span class="text-[10px] text-amber-700 font-normal">Tinjau guru baru & orang tua</span>
+                </div>
+              </a>
+            )}
             <button class="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 transition-all text-xs font-bold cursor-pointer">
               <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm">📝</span>
               <span>Input Nilai & Asesmen</span>
