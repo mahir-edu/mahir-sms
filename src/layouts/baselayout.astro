@@ -63,7 +63,7 @@ const isNavActive = (path: string) => {
   </head>
   <body class="min-h-full flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-emerald-100 selection:text-emerald-900">
     <!-- Top Decorative Brand Bar -->
-    <div class="h-1 bg-gradient-to-r from-emerald-500 via-[#5C6096] to-[#B4CD4B] w-full"></div>
+    <div class="h-1 bg-linear-to-r from-emerald-500 via-[#5C6096] to-[#B4CD4B] w-full"></div>
 
     <!-- Sticky Glass Navigation Header -->
     <header class="sticky top-0 z-50 glass-header">
@@ -118,10 +118,10 @@ const isNavActive = (path: string) => {
                   href="/dashboard" 
                   class="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors border border-slate-200"
                 >
-                  <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-emerald-500 to-[#5C6096] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                  <div class="w-7 h-7 rounded-full bg-linear-to-tr from-emerald-500 to-[#5C6096] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
                     {(user.displayName || user.email || "U")[0]}
                   </div>
-                  <span class="text-xs font-semibold text-slate-700 max-w-[120px] truncate">
+                  <span class="text-xs font-semibold text-slate-700 max-w-30 truncate">
                     {user.displayName || user.email?.split("@")[0]}
                   </span>
                 </a>
@@ -144,7 +144,7 @@ const isNavActive = (path: string) => {
                 </a>
                 <a
                   href="/register"
-                  class="btn-primary text-xs !py-2 !px-4"
+                  class="btn-primary text-xs py-2! px-4!"
                 >
                   Daftar Akun
                 </a>
@@ -205,7 +205,7 @@ const isNavActive = (path: string) => {
               <a href="/signin" class="w-full text-center py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-lg">
                 Masuk
               </a>
-              <a href="/register" class="w-full text-center btn-primary text-xs !py-2">
+              <a href="/register" class="w-full text-center btn-primary text-xs py-2!">
                 Daftar Akun
               </a>
             </div>
@@ -215,7 +215,7 @@ const isNavActive = (path: string) => {
     </header>
 
     <!-- Main Content Area -->
-    <main class="flex-grow">
+    <main class="grow">
       <slot />
     </main>
 
@@ -256,19 +256,19 @@ const isNavActive = (path: string) => {
             <h3 class="text-xs font-bold uppercase tracking-wider text-white mb-4">Metode Mahir</h3>
             <ul class="space-y-2 text-xs text-slate-400">
               <li class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-emerald"></span>
                 Lihat & Dengar (Multisensori)
               </li>
               <li class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#5C6096]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-indigo"></span>
                 Lakukan & Konseptual
               </li>
               <li class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#B4CD4B]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-lime"></span>
                 Catat & Repetisi Bermakna
               </li>
               <li class="flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#0EA5E9]"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-cyan"></span>
                 Assesment Berkelanjutan
               </li>
             </ul>

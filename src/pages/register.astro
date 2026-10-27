@@ -41,8 +41,8 @@ if (Astro.cookies.has("__session")) {
         </div>
 
         <!-- Dynamic Error Banner (controlled by JS) -->
-        <div id="register-error" class="hidden mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
-          <svg class="w-4 h-4 flex-shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+        <div id="register-error" class="hidden mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium items-center gap-2">
+          <svg class="w-4 h-4 shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
           <span id="register-error-msg">Terjadi kesalahan.</span>
@@ -66,7 +66,7 @@ if (Astro.cookies.has("__session")) {
                 id="name" 
                 required 
                 placeholder="Contoh: Budi Santoso, S.Pd."
-                class="form-input !pl-9"
+                class="form-input pl-9!"
               />
             </div>
           </div>
@@ -87,7 +87,7 @@ if (Astro.cookies.has("__session")) {
                 id="email" 
                 required 
                 placeholder="nama@sekolah.sch.id"
-                class="form-input !pl-9"
+                class="form-input pl-9!"
               />
             </div>
           </div>
@@ -109,7 +109,7 @@ if (Astro.cookies.has("__session")) {
                 required 
                 minlength="6"
                 placeholder="Minimal 6 karakter"
-                class="form-input !pl-9"
+                class="form-input pl-9!"
               />
             </div>
           </div>
@@ -118,7 +118,7 @@ if (Astro.cookies.has("__session")) {
             <button 
               type="submit" 
               id="reg-btn"
-              class="btn-primary w-full !py-2.5 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
+              class="btn-primary w-full py-2.5! text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
             >
               <span id="reg-text">Daftar Akun Baru</span>
               <svg id="reg-spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -151,10 +151,25 @@ if (Astro.cookies.has("__session")) {
   const regError = document.querySelector("#register-error") as HTMLElement | null;
   const regErrorMsg = document.querySelector("#register-error-msg") as HTMLElement | null;
 
+  function showRegisterError(message: string) {
+    if (regError && regErrorMsg) {
+      regErrorMsg.textContent = message;
+      regError.classList.remove("hidden");
+      regError.classList.add("flex");
+    }
+  }
+
+  function hideRegisterError() {
+    if (regError) {
+      regError.classList.add("hidden");
+      regError.classList.remove("flex");
+    }
+  }
+
   if (regForm) {
     regForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (regError) regError.classList.add("hidden");
+      hideRegisterError();
 
       const formData = new FormData(regForm);
       const name = formData.get("name")?.toString()?.trim();
@@ -162,18 +177,12 @@ if (Astro.cookies.has("__session")) {
       const password = formData.get("password")?.toString();
 
       if (!name || !email || !password) {
-        if (regError && regErrorMsg) {
-          regErrorMsg.textContent = "Semua bidang wajib diisi.";
-          regError.classList.remove("hidden");
-        }
+        showRegisterError("Semua bidang wajib diisi.");
         return;
       }
 
       if (password.length < 6) {
-        if (regError && regErrorMsg) {
-          regErrorMsg.textContent = "Kata sandi minimal 6 karakter.";
-          regError.classList.remove("hidden");
-        }
+        showRegisterError("Kata sandi minimal 6 karakter.");
         return;
       }
 
@@ -206,10 +215,7 @@ if (Astro.cookies.has("__session")) {
         if (regText) regText.textContent = "Daftar Akun Baru";
         if (regSpinner) regSpinner.classList.add("hidden");
 
-        if (regError && regErrorMsg) {
-          regErrorMsg.textContent = err.message || "Gagal membuat akun.";
-          regError.classList.remove("hidden");
-        }
+        showRegisterError(err.message || "Gagal membuat akun.");
       }
     });
   }

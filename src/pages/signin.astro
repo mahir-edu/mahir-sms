@@ -44,7 +44,7 @@ const registered = Astro.url.searchParams.get("registered");
 
         {registered === "success" && (
           <div class="mb-5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
-            <svg class="w-4 h-4 flex-shrink-0 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+            <svg class="w-4 h-4 shrink-0 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
             </svg>
             <span>Pendaftaran akun berhasil! Silakan masuk dengan email dan kata sandi Anda.</span>
@@ -52,8 +52,8 @@ const registered = Astro.url.searchParams.get("registered");
         )}
 
         <!-- Dynamic Error Banner (controlled by JS) -->
-        <div id="error-alert" class="hidden mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
-          <svg class="w-4 h-4 flex-shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+        <div id="error-alert" class="hidden mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium items-center gap-2">
+          <svg class="w-4 h-4 shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
           <span id="error-message">Email atau kata sandi tidak valid.</span>
@@ -77,7 +77,7 @@ const registered = Astro.url.searchParams.get("registered");
                 id="email" 
                 required 
                 placeholder="nama@sekolah.sch.id"
-                class="form-input !pl-9"
+                class="form-input pl-9!"
               />
             </div>
           </div>
@@ -100,7 +100,7 @@ const registered = Astro.url.searchParams.get("registered");
                 id="password" 
                 required 
                 placeholder="••••••••"
-                class="form-input !pl-9"
+                class="form-input pl-9!"
               />
             </div>
           </div>
@@ -109,7 +109,7 @@ const registered = Astro.url.searchParams.get("registered");
             <button 
               type="submit" 
               id="submit-btn"
-              class="btn-primary w-full !py-2.5 text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
+              class="btn-primary w-full py-2.5! text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer"
             >
               <span id="btn-text">Masuk Sekarang</span>
               <svg id="btn-spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -152,20 +152,32 @@ const registered = Astro.url.searchParams.get("registered");
   const errorAlert = document.querySelector("#error-alert") as HTMLElement | null;
   const errorMessage = document.querySelector("#error-message") as HTMLElement | null;
 
+  function showSignInError(msg: string) {
+    if (errorAlert && errorMessage) {
+      errorMessage.textContent = msg;
+      errorAlert.classList.remove("hidden");
+      errorAlert.classList.add("flex");
+    }
+  }
+
+  function hideSignInError() {
+    if (errorAlert) {
+      errorAlert.classList.add("hidden");
+      errorAlert.classList.remove("flex");
+    }
+  }
+
   if (form) {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (errorAlert) errorAlert.classList.add("hidden");
+      hideSignInError();
 
       const formData = new FormData(form);
       const email = formData.get("email")?.toString()?.trim();
       const password = formData.get("password")?.toString();
 
       if (!email || !password) {
-        if (errorAlert && errorMessage) {
-          errorMessage.textContent = "Silakan isi alamat email dan kata sandi.";
-          errorAlert.classList.remove("hidden");
-        }
+        showSignInError("Silakan isi alamat email dan kata sandi.");
         return;
       }
 
@@ -212,24 +224,21 @@ const registered = Astro.url.searchParams.get("registered");
         if (btnText) btnText.textContent = "Masuk Sekarang";
         if (btnSpinner) btnSpinner.classList.add("hidden");
 
-        if (errorAlert && errorMessage) {
-          errorAlert.classList.remove("hidden");
-          if (
-            err.code === "auth/invalid-credential" ||
-            err.code === "auth/user-not-found" ||
-            err.code === "auth/wrong-password"
-          ) {
-            errorMessage.textContent = "Email atau kata sandi yang Anda masukkan salah.";
-          } else if (err.code === "auth/invalid-email") {
-            errorMessage.textContent = "Format alamat email tidak valid.";
-          } else if (err.code === "auth/too-many-requests") {
-            errorMessage.textContent = "Terlalu banyak percobaan gagal. Silakan coba beberapa saat lagi.";
-          } else if (err.code === "auth/user-disabled") {
-            errorMessage.textContent = "Akun ini telah dinonaktifkan oleh administrator.";
-          } else {
-            errorMessage.textContent = err.message || "Gagal masuk. Periksa koneksi internet atau kredensial Anda.";
-          }
+        let msg = err.message || "Gagal masuk. Periksa koneksi internet atau kredensial Anda.";
+        if (
+          err.code === "auth/invalid-credential" ||
+          err.code === "auth/user-not-found" ||
+          err.code === "auth/wrong-password"
+        ) {
+          msg = "Email atau kata sandi yang Anda masukkan salah.";
+        } else if (err.code === "auth/invalid-email") {
+          msg = "Format alamat email tidak valid.";
+        } else if (err.code === "auth/too-many-requests") {
+          msg = "Terlalu banyak percobaan gagal. Silakan coba beberapa saat lagi.";
+        } else if (err.code === "auth/user-disabled") {
+          msg = "Akun ini telah dinonaktifkan oleh administrator.";
         }
+        showSignInError(msg);
       }
     });
   }
