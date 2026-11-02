@@ -1,0 +1,186 @@
+import type { APIRoute } from "astro";
+import { getAuth } from "firebase-admin/auth";
+import { Timestamp } from "firebase-admin/firestore";
+import { app } from "../../../../firebase/server";
+import { getUserProfile, collections, queueEmailNotification } from "../../../../firebase/firestore";
+import type { UserDocument, TeacherDocument, ParentDocument, UserRole } from "../../../../types/database";
+
+export const POST: APIRoute = async ({ request, cookies }) => {
+  const auth = getAuth(app);
+
+  // 1. Session verification & HQ Admin authorization check
+  if (!cookies.has("__session")) {
+    return new Response(JSON.stringify({ error: "Sesi tidak ditemukan. Silakan masuk kembali." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  let adminUid = "";
+  try {
+    const sessionCookie = cookies.get("__session")!.value;
+    const decoded = await auth.verifySessionCookie(sessionCookie);
+    adminUid = decoded.uid;
+    const adminProfile = await getUserProfile(adminUid);
+    if (!adminProfile || adminProfile.role !== "hq_admin") {
+      return new Response(JSON.stringify({ error: "Akses ditolak. Tindakan ini hanya dapat dilakukan oleh Central HQ Admin." }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch {
+    return new Response(JSON.stringify({ error: "Sesi otentikasi tidak valid." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 2. Parse request body
+  try {
+    const body = await request.json();
+    const email = body.email?.toString()?.toLowerCase()?.trim();
+    const displayName = body.displayName?.toString()?.trim();
+    const role: UserRole = body.role || "teacher";
+    const branchId = body.branchId ? body.branchId.toString().trim() : null;
+    const phoneNumber = body.phoneNumber?.toString()?.trim() || "";
+    const sendWelcomeEmail = Boolean(body.sendWelcomeEmail);
+    const initialPassword = body.password?.toString()?.trim() || ("Mahir@" + Math.random().toString(36).substring(2, 8) + "!");
+
+    if (!email || !displayName) {
+      return new Response(JSON.stringify({ error: "Nama lengkap dan email wajib diisi." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if ((role === "branch_admin" || role === "teacher") && !branchId) {
+      return new Response(JSON.stringify({ error: "Sekolah cabang wajib dipilih untuk peran Guru atau Admin Cabang." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // 3. Create Firebase Auth user
+    const newUser = await auth.createUser({
+      email,
+      displayName,
+      password: initialPassword,
+      phoneNumber: phoneNumber.startsWith("+") ? phoneNumber : undefined,
+    });
+
+    // 4. Set Custom User Claims
+    await auth.setCustomUserClaims(newUser.uid, {
+      role,
+      branchId,
+    });
+
+    const now = Timestamp.now();
+
+    // 5. Create Firestore User Document
+    const userDoc: UserDocument = {
+      uid: newUser.uid,
+      email,
+      displayName,
+      phoneNumber,
+      role,
+      branchId,
+      status: "active",
+      approvedByUid: adminUid,
+      approvedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    if (role === "teacher" && body.teacherMetadata) {
+      userDoc.teacherMetadata = {
+        nip: body.teacherMetadata.nip?.toString()?.trim() || "",
+        specialization: body.teacherMetadata.specialization?.toString()?.trim() || "Matematika Multisensori",
+        verifiedByUid: adminUid,
+        verifiedAt: now,
+      };
+
+      // Also create teachers/{uid}
+      const teacherDoc: TeacherDocument = {
+        uid: newUser.uid,
+        branchId: branchId || "",
+        nip: userDoc.teacherMetadata.nip,
+        fullName: displayName,
+        email,
+        specializations: [userDoc.teacherMetadata.specialization || "Matematika Multisensori"],
+        assignedClassIds: [],
+        isHomeroom: false,
+        createdAt: now,
+      };
+      await collections.teachers().doc(newUser.uid).set(teacherDoc);
+    } else if (role === "parent") {
+      userDoc.parentMetadata = {
+        isProspect: body.isProspect ?? false,
+        studentUids: [],
+        childNames: body.childName ? [body.childName.toString().trim()] : [],
+        preferredBranchId: branchId || undefined,
+      };
+
+      const parentDoc: ParentDocument = {
+        uid: newUser.uid,
+        fullName: displayName,
+        email,
+        phone: phoneNumber,
+        studentUids: [],
+        emailPreferences: {
+          attendanceAlerts: true,
+          gradeAnnouncements: true,
+          generalAnnouncements: true,
+        },
+        createdAt: now,
+      };
+      await collections.parents().doc(newUser.uid).set(parentDoc);
+    }
+
+    await collections.users().doc(newUser.uid).set(userDoc);
+
+    // 6. Optional Welcome Email
+    if (sendWelcomeEmail) {
+      await queueEmailNotification({
+        to: email,
+        subject: "Akun Portal Mahir School Management System Anda Telah Siap",
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2 style="color: #10b981;">Selamat Datang di Mahir Edu</h2>
+            <p>Halo <strong>${displayName}</strong>,</p>
+            <p>Akun Anda telah dibuatkan oleh Central Administrator dengan peran <strong>${role}</strong>.</p>
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin: 16px 0; font-family: monospace;">
+              <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+              <p style="margin: 6px 0 0 0;"><strong>Password Awal:</strong> ${initialPassword}</p>
+            </div>
+            <p>Silakan masuk dan ganti password Anda melalui: <a href="https://mahir-edu.com/signin">https://mahir-edu.com/signin</a></p>
+            <br>
+            <p style="font-size: 12px; color: #888;">Mahir School Management System</p>
+          </div>
+        `,
+        metadata: {
+          notificationType: "school_announcement",
+          branchId: branchId || "central",
+        },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      uid: newUser.uid,
+      message: `Akun ${displayName} (${email}) berhasil dibuat.`,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  } catch (err: any) {
+    let errMsg = err.message || "Gagal membuat pengguna.";
+    if (err.code === "auth/email-already-exists") {
+      errMsg = "Email ini sudah terdaftar di sistem. Gunakan email lain.";
+    }
+    return new Response(JSON.stringify({ error: errMsg }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+};

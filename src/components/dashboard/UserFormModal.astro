@@ -1,0 +1,175 @@
+---
+import type { BranchDocument } from "../../types/database";
+
+interface Props {
+  branches: BranchDocument[];
+}
+
+const { branches } = Astro.props;
+---
+
+<div id="user-form-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+  <!-- Backdrop -->
+  <div id="user-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="relative bg-white rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 z-10">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+        <div>
+          <h3 id="modal-title" class="text-base sm:text-lg font-bold text-slate-900">
+            Tambah Pengguna Baru
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Daftarkan akun staf sekolah, guru, atau wali murid secara langsung.
+          </p>
+        </div>
+        <button id="btn-close-user-modal" type="button" class="p-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Alert -->
+      <div id="user-form-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Form -->
+      <form id="user-upsert-form" class="space-y-4">
+        <input type="hidden" id="form-target-uid" name="targetUid" value="" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Display Name -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap <span class="text-rose-500">*</span></label>
+            <input 
+              type="text" 
+              name="displayName" 
+              id="form-display-name" 
+              required 
+              placeholder="Contoh: Budi Santoso, S.Pd." 
+              class="form-input text-xs py-2!"
+            />
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Alamat Email <span class="text-rose-500">*</span></label>
+            <input 
+              type="email" 
+              name="email" 
+              id="form-email" 
+              required 
+              placeholder="nama@email.com" 
+              class="form-input text-xs py-2!"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Role -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Peran Akun (Role) <span class="text-rose-500">*</span></label>
+            <select name="role" id="form-role" class="form-input text-xs py-2!" required>
+              <option value="teacher">Pendidik / Guru</option>
+              <option value="parent">Orang Tua / Wali Siswa</option>
+              <option value="branch_admin">Admin Sekolah Cabang</option>
+              <option value="student">Siswa</option>
+              <option value="hq_admin">Central HQ Administrator</option>
+            </select>
+          </div>
+
+          <!-- Branch -->
+          <div id="branch-field-container">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Sekolah Cabang / Pemancar</label>
+            <select name="branchId" id="form-branch" class="form-input text-xs py-2!">
+              <option value="">Pilih Unit Sekolah...</option>
+              {branches.map(b => (
+                <option value={b.id}>{b.name} ({b.code})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Phone Number -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nomor WhatsApp / HP</label>
+            <input 
+              type="text" 
+              name="phoneNumber" 
+              id="form-phone" 
+              placeholder="081234567890" 
+              class="form-input text-xs py-2!"
+            />
+          </div>
+
+          <!-- Password (Only for Create) -->
+          <div id="password-field-container">
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Password Awal <span class="text-slate-400 font-normal">(Kosongkan untuk otomatis)</span>
+            </label>
+            <input 
+              type="text" 
+              name="password" 
+              id="form-password" 
+              placeholder="Minimal 6 karakter" 
+              class="form-input text-xs py-2!"
+            />
+          </div>
+        </div>
+
+        <!-- Teacher Specific Fields -->
+        <div id="teacher-fields" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Informasi Pendidik:</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nomor Induk Pegawai (NIP)</label>
+              <input type="text" name="nip" id="form-nip" placeholder="Opsional" class="form-input text-xs py-1.5!" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Spesialisasi Ajar</label>
+              <input type="text" name="specialization" id="form-spec" value="Matematika Multisensori" class="form-input text-xs py-1.5!" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Parent Specific Fields -->
+        <div id="parent-fields" class="hidden p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Informasi Wali & Ananda:</div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Nama Calon Siswa / Ananda</label>
+            <input type="text" name="childName" id="form-child-name" placeholder="Nama putra/putri" class="form-input text-xs py-1.5!" />
+          </div>
+        </div>
+
+        <!-- Email Notification Checkbox -->
+        <div id="email-notif-container" class="flex items-center gap-2 pt-2">
+          <input type="checkbox" name="sendWelcomeEmail" id="form-send-email" checked class="w-4 h-4 text-emerald-600 rounded" />
+          <label for="form-send-email" class="text-xs text-slate-700 font-medium cursor-pointer">
+            Kirimkan email pemberitahuan & kredensial login ke alamat email di atas.
+          </label>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          <button 
+            type="button" 
+            id="btn-cancel-modal" 
+            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Batal
+          </button>
+          <button 
+            type="submit" 
+            id="btn-submit-user" 
+            class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer"
+          >
+            <span id="btn-submit-text">Simpan Pengguna</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

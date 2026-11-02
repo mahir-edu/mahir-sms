@@ -569,3 +569,265 @@ export async function getAssessmentsForClass(classId?: string): Promise<Assessme
   return snapshot.docs.map(doc => doc.data() as AssessmentDocument);
 }
 
+// ==========================================
+// 10. Admin User CRUD & Bulk Ingestion Helpers
+// ==========================================
+export async function deleteUserComplete(params: {
+  targetUid: string;
+  adminUid: string;
+  mode?: "soft" | "permanent";
+}): Promise<{ success: boolean; message: string }> {
+  if (params.targetUid === params.adminUid) {
+    throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
+  }
+
+  const userDoc = await collections.users().doc(params.targetUid).get();
+  if (!userDoc.exists) {
+    throw new Error("Pengguna tidak ditemukan.");
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  if (userData.email && SUPER_ADMIN_EMAILS.includes(userData.email.toLowerCase())) {
+    throw new Error("Akun Super Administrator Utama dilindungi dan tidak dapat dihapus.");
+  }
+
+  const { getAuth } = await import("firebase-admin/auth");
+  const auth = getAuth(app);
+
+  if (params.mode === "permanent") {
+    // 1. Delete from Firebase Auth
+    try {
+      await auth.deleteUser(params.targetUid);
+    } catch (e: any) {
+      console.warn("Auth user delete warning:", e.message);
+    }
+
+    // 2. Delete stakeholder records
+    if (userData.role === "teacher") {
+      await collections.teachers().doc(params.targetUid).delete().catch(() => {});
+    } else if (userData.role === "parent") {
+      await collections.parents().doc(params.targetUid).delete().catch(() => {});
+    } else if (userData.role === "student") {
+      await collections.students().doc(params.targetUid).delete().catch(() => {});
+    }
+
+    // 3. Delete from users collection
+    await collections.users().doc(params.targetUid).delete();
+    return { success: true, message: `Akun ${userData.displayName} (${userData.email}) berhasil dihapus permanen.` };
+  } else {
+    // Soft suspension
+    await collections.users().doc(params.targetUid).update({
+      status: "suspended",
+      updatedAt: Timestamp.now(),
+    });
+    try {
+      await auth.revokeRefreshTokens(params.targetUid);
+    } catch {}
+    return { success: true, message: `Akun ${userData.displayName} berhasil dinonaktifkan (suspended).` };
+  }
+}
+
+export interface ImportRowRecord {
+  nis: string;
+  nisn?: string;
+  fullName: string;
+  gender: "male" | "female";
+  birthDate?: string;
+  branchId: string;
+  className?: string;
+  parentName: string;
+  parentEmail: string;
+  parentPhone?: string;
+}
+
+export async function bulkImportStudentsAndParents(params: {
+  records: ImportRowRecord[];
+  adminUid: string;
+  sendWelcomeEmail?: boolean;
+}): Promise<{
+  totalProcessed: number;
+  studentsCreated: number;
+  parentsCreated: number;
+  parentsLinked: number;
+  errors: { row: number; error: string }[];
+}> {
+  const { getAuth } = await import("firebase-admin/auth");
+  const auth = getAuth(app);
+  const now = Timestamp.now();
+
+  let studentsCreated = 0;
+  let parentsCreated = 0;
+  let parentsLinked = 0;
+  const errors: { row: number; error: string }[] = [];
+
+  // Pre-fetch existing students by NIS to prevent duplicates
+  const existingNisSet = new Set<string>();
+  const studentsSnap = await collections.students().get();
+  studentsSnap.docs.forEach(doc => {
+    const s = doc.data() as StudentDocument;
+    if (s.nis) existingNisSet.add(s.nis.toLowerCase().trim());
+  });
+
+  for (let i = 0; i < params.records.length; i++) {
+    const row = params.records[i];
+    const rowIdx = i + 1;
+
+    try {
+      const cleanNis = row.nis.trim();
+      const cleanParentEmail = row.parentEmail.toLowerCase().trim();
+
+      if (!cleanNis || !row.fullName || !cleanParentEmail) {
+        errors.push({ row: rowIdx, error: "NIS, Nama Siswa, dan Email Orang Tua wajib diisi." });
+        continue;
+      }
+
+      if (existingNisSet.has(cleanNis.toLowerCase())) {
+        errors.push({ row: rowIdx, error: `Siswa dengan NIS "${cleanNis}" sudah terdaftar di sistem. Dilewati.` });
+        continue;
+      }
+
+      // 1. Resolve or Create Parent in Auth & Firestore
+      let parentUid = "";
+      let isNewParent = false;
+
+      try {
+        const existingAuthUser = await auth.getUserByEmail(cleanParentEmail);
+        parentUid = existingAuthUser.uid;
+      } catch (err: any) {
+        if (err.code === "auth/user-not-found") {
+          // Create new parent Auth user with secure temporary password
+          const tempPassword = "Mahir@" + Math.random().toString(36).substring(2, 8) + "!";
+          const newAuthUser = await auth.createUser({
+            email: cleanParentEmail,
+            displayName: row.parentName.trim(),
+            password: tempPassword,
+            phoneNumber: row.parentPhone?.startsWith("+") ? row.parentPhone : undefined,
+          });
+          parentUid = newAuthUser.uid;
+          isNewParent = true;
+
+          await auth.setCustomUserClaims(parentUid, {
+            role: "parent",
+            branchId: row.branchId,
+          });
+
+          // Create User document for parent
+          const parentUserDoc: UserDocument = {
+            uid: parentUid,
+            email: cleanParentEmail,
+            displayName: row.parentName.trim(),
+            phoneNumber: row.parentPhone || "",
+            role: "parent",
+            branchId: row.branchId,
+            status: "active",
+            parentMetadata: {
+              isProspect: false,
+              studentUids: [],
+              childNames: [row.fullName.trim()],
+            },
+            approvedByUid: params.adminUid,
+            approvedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          };
+          await collections.users().doc(parentUid).set(parentUserDoc);
+
+          // Create Parent document
+          const parentDoc: ParentDocument = {
+            uid: parentUid,
+            fullName: row.parentName.trim(),
+            email: cleanParentEmail,
+            phone: row.parentPhone || "",
+            studentUids: [],
+            emailPreferences: {
+              attendanceAlerts: true,
+              gradeAnnouncements: true,
+              generalAnnouncements: true,
+            },
+            createdAt: now,
+          };
+          await collections.parents().doc(parentUid).set(parentDoc);
+          parentsCreated++;
+
+          // Optional welcome email
+          if (params.sendWelcomeEmail) {
+            await queueEmailNotification({
+              to: cleanParentEmail,
+              subject: "Selamat Datang di Mahir Edu: Akun Portal Wali Siswa Anda",
+              html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                  <h2 style="color: #10b981;">Selamat Datang di Mahir School Management System</h2>
+                  <p>Yth. Bapak/Ibu <strong>${row.parentName}</strong>,</p>
+                  <p>Akun portal wali siswa Anda untuk ananda <strong>${row.fullName}</strong> telah berhasil dibuat.</p>
+                  <p>Berikut kredensial login akun Anda:</p>
+                  <div style="background-color: #f1f5f9; padding: 16px; border-radius: 8px; font-family: monospace; margin: 16px 0;">
+                    <p style="margin: 0;"><strong>Email:</strong> ${cleanParentEmail}</p>
+                    <p style="margin: 6px 0 0 0;"><strong>Password Sementara:</strong> ${tempPassword}</p>
+                  </div>
+                  <p>Silakan masuk dan ubah password Anda di: <a href="https://mahir-edu.com/signin">https://mahir-edu.com/signin</a></p>
+                  <br>
+                  <p style="font-size: 12px; color: #888;">Mahir School Management System</p>
+                </div>
+              `,
+              metadata: {
+                notificationType: "school_announcement",
+                branchId: row.branchId,
+              },
+            });
+          }
+        } else {
+          throw err;
+        }
+      }
+
+      // 2. Create Student Record in Firestore
+      const studentUid = `stu_${cleanNis.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}`;
+      const studentDoc: StudentDocument = {
+        uid: studentUid,
+        branchId: row.branchId,
+        currentClassId: row.className || "default-class",
+        nis: cleanNis,
+        nisn: row.nisn || "",
+        fullName: row.fullName.trim(),
+        gender: row.gender,
+        birthDate: row.birthDate || "",
+        parentUids: [parentUid],
+        primaryParentEmail: cleanParentEmail,
+        status: "active",
+        enrolledAt: now,
+      };
+
+      await collections.students().doc(studentUid).set(studentDoc);
+      existingNisSet.add(cleanNis.toLowerCase());
+      studentsCreated++;
+
+      // 3. Link Student UID to Parent
+      await collections.parents().doc(parentUid).update({
+        studentUids: FieldValue.arrayUnion(studentUid),
+      });
+
+      await collections.users().doc(parentUid).update({
+        "parentMetadata.studentUids": FieldValue.arrayUnion(studentUid),
+        "parentMetadata.childNames": FieldValue.arrayUnion(row.fullName.trim()),
+        "parentMetadata.isProspect": false,
+        updatedAt: now,
+      });
+
+      if (!isNewParent) {
+        parentsLinked++;
+      }
+
+    } catch (err: any) {
+      errors.push({ row: rowIdx, error: err.message || "Gagal memproses baris ini." });
+    }
+  }
+
+  return {
+    totalProcessed: params.records.length,
+    studentsCreated,
+    parentsCreated,
+    parentsLinked,
+    errors,
+  };
+}
+

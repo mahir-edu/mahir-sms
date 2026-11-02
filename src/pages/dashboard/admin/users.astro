@@ -3,6 +3,8 @@ import { app } from "../../../firebase/server";
 import { getAuth } from "firebase-admin/auth";
 import { getUserProfile, getAllUsers, getAllBranches } from "../../../firebase/firestore";
 import DashboardLayout from "../../../layouts/DashboardLayout.astro";
+import UserFormModal from "../../../components/dashboard/UserFormModal.astro";
+import UserImportModal from "../../../components/dashboard/UserImportModal.astro";
 import "../../../styles/global.css";
 
 /* Verify user session & ensure HQ Admin role */
@@ -16,7 +18,7 @@ try {
   const sessionCookie = Astro.cookies.get("__session")!.value;
   const decodedCookie = await auth.verifySessionCookie(sessionCookie);
   user = await auth.getUser(decodedCookie.uid);
-} catch (e) {
+} catch {
   return Astro.redirect("/signin");
 }
 
@@ -26,7 +28,6 @@ if (!user) {
 
 const userProfile = await getUserProfile(user.uid);
 if (!userProfile || userProfile.role !== "hq_admin") {
-  // Only Central HQ Admin can access this page
   return Astro.redirect("/dashboard");
 }
 
@@ -46,11 +47,11 @@ const linkedParents = parents.length - prospectParents;
 
 <DashboardLayout 
   title="Manajemen Pengguna & Verifikasi" 
-  description="Portal Central HQ Admin untuk memverifikasi akun guru dan mengelola pengguna"
+  description="Portal Central HQ Admin untuk mengelola pengguna, peran, dan import massal siswa & wali"
   userProfile={userProfile}
 >
   <div>
-    <!-- Top Breadcrumb & Navigation -->
+    <!-- Top Breadcrumb & Actions Bar -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
       <div>
         <nav class="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-2">
@@ -58,29 +59,39 @@ const linkedParents = parents.length - prospectParents;
           <span>/</span>
           <span class="text-slate-700">Central Admin</span>
           <span>/</span>
-          <span class="text-emerald-700">Manajemen Pengguna</span>
+          <span class="text-emerald-700 font-bold">Manajemen Pengguna</span>
         </nav>
         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
-          <span>Verifikasi & Kelola Pengguna</span>
+          <span>Kelola Pengguna & Peran</span>
           {pendingTeachers > 0 && (
             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-              {pendingTeachers} Menunggu
+              {pendingTeachers} Guru Menunggu
             </span>
           )}
         </h1>
         <p class="text-xs sm:text-sm text-slate-500 mt-1">
-          Tinjau pendaftaran guru baru dari unit Sekolah Pemancar dan kelola akun pengguna ekosistem Mahir SMS.
+          Kelola data akun seluruh peran, hak akses unit cabang, dan import data siswa & wali murid.
         </p>
       </div>
 
-      <div class="flex items-center gap-3">
-        <a 
-          href="/dashboard" 
-          class="btn-outline text-xs py-2.5! px-4! flex items-center gap-2"
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2.5 w-full sm:w-auto">
+        <button 
+          type="button" 
+          id="btn-open-import" 
+          class="btn-outline text-xs py-2.5! px-3.5! flex items-center gap-1.5 font-bold cursor-pointer"
         >
-          <span>&larr;</span>
-          <span>Kembali ke Dashboard</span>
-        </a>
+          <span>📥</span>
+          <span>Import Siswa & Wali</span>
+        </button>
+        <button 
+          type="button" 
+          id="btn-open-create-user" 
+          class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
+        >
+          <span>+</span>
+          <span>Tambah Pengguna</span>
+        </button>
       </div>
     </div>
 
@@ -104,7 +115,7 @@ const linkedParents = parents.length - prospectParents;
         </div>
         <div class="text-3xl font-extrabold text-amber-900">{pendingTeachers}</div>
         <div class="text-[11px] font-semibold text-amber-700 mt-1">
-          {pendingTeachers > 0 ? "Memerlukan tindakan konfirmasi" : "Semua permohonan telah ditinjau"}
+          {pendingTeachers > 0 ? "Memerlukan konfirmasi" : "Semua permohonan telah ditinjau"}
         </div>
       </div>
 
@@ -165,10 +176,11 @@ const linkedParents = parents.length - prospectParents;
         <!-- Role Filter -->
         <div>
           <select id="role-filter" class="form-input text-xs">
-            <option value="all">Semua Peran Pengguna</option>
+            <option value="all">Semua Peran (Role)</option>
             <option value="teacher">Pendidik (Guru)</option>
             <option value="parent">Orang Tua / Wali</option>
-            <option value="branch_admin">Admin Pemancar</option>
+            <option value="branch_admin">Admin Sekolah Pemancar</option>
+            <option value="student">Siswa</option>
             <option value="hq_admin">Central HQ Admin</option>
           </select>
         </div>
@@ -176,56 +188,53 @@ const linkedParents = parents.length - prospectParents;
         <!-- Branch Filter -->
         <div>
           <select id="branch-filter" class="form-input text-xs">
-            <option value="all">Semua Cabang Sekolah</option>
-            {allBranches.map(b => (
-              <option value={b.id}>{b.name}</option>
+            <option value="all">Semua Unit Sekolah</option>
+            {allBranches.map(branch => (
+              <option value={branch.id}>{branch.name} ({branch.code})</option>
             ))}
           </select>
         </div>
       </div>
     </div>
 
-    <!-- User Data Table -->
-    <div class="glass-card rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <!-- Users Table Container -->
+    <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
       <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse" id="users-table">
+        <table class="w-full text-left text-xs border-collapse">
           <thead>
-            <tr class="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-              <th class="py-3.5 px-4 sm:px-6">Pengguna</th>
-              <th class="py-3.5 px-4">Peran</th>
-              <th class="py-3.5 px-4">Cabang Pemancar</th>
-              <th class="py-3.5 px-4">Detail Tambahan</th>
-              <th class="py-3.5 px-4">Status</th>
-              <th class="py-3.5 px-4 sm:px-6 text-right">Tindakan</th>
+            <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <th class="py-3 px-4 sm:px-6 font-bold uppercase tracking-wider text-[10px]">Nama & Kontak</th>
+              <th class="py-3 px-4 sm:px-6 font-bold uppercase tracking-wider text-[10px]">Peran (Role)</th>
+              <th class="py-3 px-4 sm:px-6 font-bold uppercase tracking-wider text-[10px]">Unit Sekolah</th>
+              <th class="py-3 px-4 sm:px-6 font-bold uppercase tracking-wider text-[10px]">Status</th>
+              <th class="py-3 px-4 sm:px-6 font-bold uppercase tracking-wider text-[10px] text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 text-xs">
+          <tbody class="divide-y divide-slate-100 bg-white" id="users-table-body">
             {allUsers.map((u) => {
-              const branchName = u.branchId ? (branchMap.get(u.branchId) || u.branchId) : "-";
-              const isTeacher = u.role === "teacher";
-              const isParent = u.role === "parent";
               const isPending = u.status === "pending_approval";
               const isActive = u.status === "active";
               const isSuspended = u.status === "suspended";
+              const branchName = u.branchId ? (branchMap.get(u.branchId) || u.branchId) : "-";
 
               return (
                 <tr 
-                  class="hover:bg-slate-50/80 transition-colors user-row" 
-                  data-name={u.displayName.toLowerCase()} 
-                  data-email={u.email.toLowerCase()} 
-                  data-role={u.role} 
+                  class="user-row hover:bg-slate-50/80 transition-colors" 
+                  id={`row-${u.uid}`}
+                  data-name={(u.displayName || "").toLowerCase()}
+                  data-email={(u.email || "").toLowerCase()}
+                  data-role={u.role}
                   data-status={u.status}
                   data-branch={u.branchId || "none"}
-                  id={`row-${u.uid}`}
                 >
                   <!-- Name & Email -->
                   <td class="py-3.5 px-4 sm:px-6">
                     <div class="flex items-center gap-3">
-                      <div class="w-9 h-9 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                      <div class="w-9 h-9 rounded-full bg-linear-to-tr from-slate-200 to-slate-300 text-slate-700 flex items-center justify-center font-bold text-xs uppercase shrink-0">
                         {(u.displayName || u.email || "U")[0]}
                       </div>
                       <div>
-                        <div class="font-bold text-slate-900">{u.displayName}</div>
+                        <div class="font-bold text-slate-900">{u.displayName || "Tanpa Nama"}</div>
                         <div class="text-[11px] text-slate-500">{u.email}</div>
                         {u.phoneNumber && (
                           <div class="text-[10px] text-slate-400 mt-0.5">WA: {u.phoneNumber}</div>
@@ -234,65 +243,34 @@ const linkedParents = parents.length - prospectParents;
                     </div>
                   </td>
 
-                  <!-- Role Badge -->
-                  <td class="py-3.5 px-4">
-                    {isTeacher && (
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        👨‍🏫 Pendidik
-                      </span>
-                    )}
-                    {isParent && (
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
-                        👨‍👩‍👦 Orang Tua
-                      </span>
-                    )}
-                    {u.role === "hq_admin" && (
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
-                        👑 Central HQ
-                      </span>
-                    )}
-                    {u.role === "branch_admin" && (
-                      <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
-                        🏫 Admin Cabang
-                      </span>
-                    )}
+                  <!-- Role -->
+                  <td class="py-3.5 px-4 sm:px-6">
+                    <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      u.role === "hq_admin" 
+                        ? "bg-purple-100 text-purple-800" 
+                        : u.role === "branch_admin"
+                        ? "bg-sky-100 text-sky-800"
+                        : u.role === "teacher"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : u.role === "student"
+                        ? "bg-lime-100 text-lime-800"
+                        : "bg-indigo-100 text-indigo-800"
+                    }`}>
+                      {u.role === "hq_admin" && "Central HQ"}
+                      {u.role === "branch_admin" && "Admin Cabang"}
+                      {u.role === "teacher" && "Pendidik"}
+                      {u.role === "student" && "Siswa"}
+                      {u.role === "parent" && (u.parentMetadata?.isProspect ? "Wali (Prospek)" : "Wali Siswa")}
+                    </span>
                   </td>
 
-                  <!-- Branch Affiliation -->
-                  <td class="py-3.5 px-4 text-slate-700 font-medium max-w-50 truncate">
+                  <!-- Unit Sekolah -->
+                  <td class="py-3.5 px-4 sm:px-6 text-slate-700">
                     {branchName}
                   </td>
 
-                  <!-- Detail Metadata (NIP, Prospect, Child) -->
-                  <td class="py-3.5 px-4 text-slate-600">
-                    {isTeacher && (
-                      <div class="space-y-0.5 text-[11px]">
-                        {u.teacherMetadata?.nip && <div>NIP: <span class="font-mono text-slate-800">{u.teacherMetadata.nip}</span></div>}
-                        {u.teacherMetadata?.specialization && <div class="text-slate-500">{u.teacherMetadata.specialization}</div>}
-                        {!u.teacherMetadata?.nip && !u.teacherMetadata?.specialization && <span class="text-slate-400">-</span>}
-                      </div>
-                    )}
-                    {isParent && (
-                      <div class="space-y-0.5 text-[11px]">
-                        {u.parentMetadata?.isProspect ? (
-                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            Prospek / Belum Ada Siswa
-                          </span>
-                        ) : (
-                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            Terhubung Siswa
-                          </span>
-                        )}
-                        {u.parentMetadata?.childNames && u.parentMetadata.childNames.length > 0 && (
-                          <div class="text-[10px] text-slate-500">Anak: {u.parentMetadata.childNames.join(", ")}</div>
-                        )}
-                      </div>
-                    )}
-                    {!isTeacher && !isParent && <span class="text-slate-400">-</span>}
-                  </td>
-
                   <!-- Status Badge -->
-                  <td class="py-3.5 px-4">
+                  <td class="py-3.5 px-4 sm:px-6">
                     <span id={`status-badge-${u.uid}`}>
                       {isPending && (
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -322,12 +300,12 @@ const linkedParents = parents.length - prospectParents;
 
                   <!-- Action Buttons -->
                   <td class="py-3.5 px-4 sm:px-6 text-right">
-                    <div class="inline-flex items-center gap-2 justify-end" id={`actions-${u.uid}`}>
+                    <div class="inline-flex items-center gap-1.5 justify-end" id={`actions-${u.uid}`}>
                       {isPending && (
                         <>
                           <button 
                             type="button" 
-                            class="action-btn px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all cursor-pointer shadow-xs"
+                            class="action-btn px-2.5 py-1 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all cursor-pointer shadow-xs"
                             data-uid={u.uid}
                             data-action="active"
                           >
@@ -335,7 +313,7 @@ const linkedParents = parents.length - prospectParents;
                           </button>
                           <button 
                             type="button" 
-                            class="action-btn px-3 py-1.5 rounded-lg text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
+                            class="action-btn px-2.5 py-1 rounded-lg text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
                             data-uid={u.uid}
                             data-action="rejected"
                           >
@@ -343,24 +321,79 @@ const linkedParents = parents.length - prospectParents;
                           </button>
                         </>
                       )}
+
+                      <!-- Edit Button -->
+                      <button 
+                        type="button" 
+                        class="btn-edit-user p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 transition-all cursor-pointer"
+                        title="Edit Profil & Peran"
+                        data-uid={u.uid}
+                        data-name={u.displayName || ""}
+                        data-email={u.email}
+                        data-phone={u.phoneNumber || ""}
+                        data-role={u.role}
+                        data-branch={u.branchId || ""}
+                        data-status={u.status}
+                        data-nip={u.teacherMetadata?.nip || ""}
+                        data-spec={u.teacherMetadata?.specialization || ""}
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+
+                      <!-- Reset Password Button -->
+                      <button 
+                        type="button" 
+                        class="btn-reset-pw p-1.5 rounded-lg text-slate-500 hover:text-purple-700 hover:bg-purple-50 border border-slate-200 transition-all cursor-pointer"
+                        title="Kirim Tautan Reset Password"
+                        data-email={u.email}
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                      </button>
+
+                      {/* Suspend / Reactivate button */}
                       {isActive && u.role !== "hq_admin" && (
                         <button 
                           type="button" 
-                          class="action-btn px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-all cursor-pointer"
+                          class="action-btn p-1.5 rounded-lg text-slate-500 hover:text-amber-700 hover:bg-amber-50 border border-slate-200 transition-all cursor-pointer"
+                          title="Tangguhkan Akun"
                           data-uid={u.uid}
                           data-action="suspended"
                         >
-                          Tangguhkan
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                          </svg>
                         </button>
                       )}
                       {isSuspended && (
                         <button 
                           type="button" 
-                          class="action-btn px-2.5 py-1 rounded-md text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
+                          class="action-btn p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
+                          title="Aktifkan Kembali"
                           data-uid={u.uid}
                           data-action="active"
                         >
-                          Aktifkan
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Delete Account */}
+                      {u.role !== "hq_admin" && (
+                        <button 
+                          type="button" 
+                          class="btn-delete-user p-1.5 rounded-lg text-slate-400 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-all cursor-pointer"
+                          title="Hapus Akun Permanen"
+                          data-uid={u.uid}
+                          data-name={u.displayName || u.email}
+                        >
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       )}
                     </div>
@@ -372,7 +405,7 @@ const linkedParents = parents.length - prospectParents;
         </table>
       </div>
 
-      <!-- Empty State (Shown when filters match 0 rows) -->
+      <!-- Empty State -->
       <div id="no-results" class="hidden p-12 text-center">
         <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl">
           🔍
@@ -382,9 +415,14 @@ const linkedParents = parents.length - prospectParents;
       </div>
     </div>
   </div>
+
+  <!-- Reusable Modals -->
+  <UserFormModal branches={allBranches} />
+  <UserImportModal branches={allBranches} />
 </DashboardLayout>
 
 <script>
+  // 1. Filtering & Search Logic
   const searchInput = document.querySelector("#search-input") as HTMLInputElement | null;
   const statusFilter = document.querySelector("#status-filter") as HTMLSelectElement | null;
   const roleFilter = document.querySelector("#role-filter") as HTMLSelectElement | null;
@@ -433,11 +471,9 @@ const linkedParents = parents.length - prospectParents;
   statusFilter?.addEventListener("change", filterUsers);
   roleFilter?.addEventListener("change", filterUsers);
   branchFilter?.addEventListener("change", filterUsers);
-
-  // Initial filter run (if pending was selected by default)
   filterUsers();
 
-  // Handle Action Buttons (Approve / Reject / Suspend)
+  // 2. Action Buttons: Approve / Reject / Suspend Quick Toggle
   document.querySelectorAll<HTMLButtonElement>(".action-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const uid = btn.dataset.uid;
@@ -458,9 +494,6 @@ const linkedParents = parents.length - prospectParents;
       }
 
       btn.disabled = true;
-      const originalText = btn.textContent;
-      btn.textContent = "Menyimpan...";
-
       try {
         const response = await fetch("/api/admin/users/update-status", {
           method: "POST",
@@ -469,77 +502,425 @@ const linkedParents = parents.length - prospectParents;
         });
 
         const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "Gagal memperbarui status.");
-        }
-
-        // Update badge and row in real time
-        const statusBadge = document.querySelector(`#status-badge-${uid}`);
-        const actionsContainer = document.querySelector(`#actions-${uid}`);
-        const row = document.querySelector<HTMLTableRowElement>(`#row-${uid}`);
-
-        if (row) {
-          row.dataset.status = action;
-        }
-
-        if (statusBadge) {
-          if (action === "active") {
-            statusBadge.innerHTML = `
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                Aktif
-              </span>
-            `;
-          } else if (action === "rejected") {
-            statusBadge.innerHTML = `
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                Ditolak
-              </span>
-            `;
-          } else if (action === "suspended") {
-            statusBadge.innerHTML = `
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                Ditangguhkan
-              </span>
-            `;
-          }
-        }
-
-        if (actionsContainer) {
-          if (action === "active") {
-            actionsContainer.innerHTML = `
-              <button 
-                type="button" 
-                class="action-btn px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-all cursor-pointer"
-                data-uid="${uid}"
-                data-action="suspended"
-                onclick="window.location.reload()"
-              >
-                Tangguhkan
-              </button>
-            `;
-          } else {
-            actionsContainer.innerHTML = `
-              <button 
-                type="button" 
-                class="action-btn px-2.5 py-1 rounded-md text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
-                data-uid="${uid}"
-                data-action="active"
-                onclick="window.location.reload()"
-              >
-                Aktifkan
-              </button>
-            `;
-          }
-        }
-
+        if (!response.ok) throw new Error(data.error || "Gagal memperbarui status.");
         alert("Status pengguna berhasil diperbarui!");
+        window.location.reload();
       } catch (err: any) {
         alert(err.message || "Terjadi kesalahan.");
         btn.disabled = false;
-        btn.textContent = originalText;
       }
     });
+  });
+
+  // 3. User Form Modal Controls (Create & Edit)
+  const userModal = document.getElementById("user-form-modal");
+  const btnOpenCreate = document.getElementById("btn-open-create-user");
+  const btnCloseModal = document.getElementById("btn-close-user-modal");
+  const btnCancelModal = document.getElementById("btn-cancel-modal");
+  const userBackdrop = document.getElementById("user-modal-backdrop");
+  const userForm = document.getElementById("user-upsert-form") as HTMLFormElement | null;
+  const modalTitle = document.getElementById("modal-title");
+  const formTargetUid = document.getElementById("form-target-uid") as HTMLInputElement | null;
+  const formDisplayName = document.getElementById("form-display-name") as HTMLInputElement | null;
+  const formEmail = document.getElementById("form-email") as HTMLInputElement | null;
+  const formRole = document.getElementById("form-role") as HTMLSelectElement | null;
+  const formBranch = document.getElementById("form-branch") as HTMLSelectElement | null;
+  const formPhone = document.getElementById("form-phone") as HTMLInputElement | null;
+  const formPassword = document.getElementById("form-password") as HTMLInputElement | null;
+  const formNip = document.getElementById("form-nip") as HTMLInputElement | null;
+  const formSpec = document.getElementById("form-spec") as HTMLInputElement | null;
+  const passwordContainer = document.getElementById("password-field-container");
+  const teacherFields = document.getElementById("teacher-fields");
+  const parentFields = document.getElementById("parent-fields");
+  const emailNotifContainer = document.getElementById("email-notif-container");
+  const userAlert = document.getElementById("user-form-alert");
+
+  function openUserModal(isEdit = false) {
+    if (!userModal) return;
+    if (userAlert) userAlert.classList.add("hidden");
+
+    if (isEdit) {
+      if (modalTitle) modalTitle.textContent = "Edit Data Pengguna";
+      if (passwordContainer) passwordContainer.classList.add("hidden");
+      if (emailNotifContainer) emailNotifContainer.classList.add("hidden");
+      if (formEmail) formEmail.readOnly = true;
+    } else {
+      if (modalTitle) modalTitle.textContent = "Tambah Pengguna Baru";
+      if (passwordContainer) passwordContainer.classList.remove("hidden");
+      if (emailNotifContainer) emailNotifContainer.classList.remove("hidden");
+      if (formEmail) formEmail.readOnly = false;
+      userForm?.reset();
+      if (formTargetUid) formTargetUid.value = "";
+    }
+
+    userModal.classList.remove("hidden");
+    toggleRoleFields();
+  }
+
+  function closeUserModal() {
+    userModal?.classList.add("hidden");
+  }
+
+  function toggleRoleFields() {
+    const role = formRole?.value;
+    if (role === "teacher") {
+      teacherFields?.classList.remove("hidden");
+      parentFields?.classList.add("hidden");
+    } else if (role === "parent") {
+      teacherFields?.classList.add("hidden");
+      parentFields?.classList.remove("hidden");
+    } else {
+      teacherFields?.classList.add("hidden");
+      parentFields?.classList.add("hidden");
+    }
+  }
+
+  btnOpenCreate?.addEventListener("click", () => openUserModal(false));
+  btnCloseModal?.addEventListener("click", closeUserModal);
+  btnCancelModal?.addEventListener("click", closeUserModal);
+  userBackdrop?.addEventListener("click", closeUserModal);
+  formRole?.addEventListener("change", toggleRoleFields);
+
+  // Edit User Buttons
+  document.querySelectorAll<HTMLButtonElement>(".btn-edit-user").forEach(btn => {
+    btn.addEventListener("click", () => {
+      openUserModal(true);
+      if (formTargetUid) formTargetUid.value = btn.dataset.uid || "";
+      if (formDisplayName) formDisplayName.value = btn.dataset.name || "";
+      if (formEmail) formEmail.value = btn.dataset.email || "";
+      if (formPhone) formPhone.value = btn.dataset.phone || "";
+      if (formRole) formRole.value = btn.dataset.role || "teacher";
+      if (formBranch) formBranch.value = btn.dataset.branch || "";
+      if (formNip) formNip.value = btn.dataset.nip || "";
+      if (formSpec) formSpec.value = btn.dataset.spec || "";
+      toggleRoleFields();
+    });
+  });
+
+  // User Form Submit (Create vs Update)
+  userForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const isEdit = Boolean(formTargetUid?.value);
+    const endpoint = isEdit ? "/api/admin/users/update" : "/api/admin/users/create";
+
+    const payload: Record<string, any> = {
+      targetUid: formTargetUid?.value,
+      displayName: formDisplayName?.value,
+      email: formEmail?.value,
+      role: formRole?.value,
+      branchId: formBranch?.value || null,
+      phoneNumber: formPhone?.value,
+    };
+
+    if (!isEdit) {
+      payload.password = formPassword?.value;
+      payload.sendWelcomeEmail = (document.getElementById("form-send-email") as HTMLInputElement)?.checked;
+    }
+
+    if (formRole?.value === "teacher") {
+      payload.teacherMetadata = {
+        nip: formNip?.value,
+        specialization: formSpec?.value,
+      };
+    }
+
+    const btnSubmit = document.getElementById("btn-submit-user") as HTMLButtonElement | null;
+    if (btnSubmit) btnSubmit.disabled = true;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan data.");
+
+      alert(data.message || "Pengguna berhasil disimpan!");
+      closeUserModal();
+      window.location.reload();
+    } catch (err: any) {
+      if (userAlert) {
+        userAlert.textContent = err.message || "Terjadi kesalahan.";
+        userAlert.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        userAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+    }
+  });
+
+  // 4. Password Reset Button
+  document.querySelectorAll<HTMLButtonElement>(".btn-reset-pw").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const email = btn.dataset.email;
+      if (!email) return;
+
+      if (!confirm(`Kirim tautan reset kata sandi ke email: ${email}?`)) return;
+
+      try {
+        const res = await fetch("/api/admin/users/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal membuat tautan reset.");
+        alert(`Tautan reset password berhasil dikirim ke ${email}!\n\nLink darurat:\n${data.resetLink}`);
+      } catch (err: any) {
+        alert(err.message || "Gagal memproses reset kata sandi.");
+      }
+    });
+  });
+
+  // 5. Delete User Button
+  document.querySelectorAll<HTMLButtonElement>(".btn-delete-user").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const uid = btn.dataset.uid;
+      const name = btn.dataset.name;
+      if (!uid) return;
+
+      const confirmMsg = `PERINGATAN: Apakah Anda yakin ingin menghapus akun "${name}" secara permanen dari sistem?\nTindakan ini tidak dapat dibatalkan.`;
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch("/api/admin/users/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUid: uid, mode: "permanent" }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal menghapus pengguna.");
+        alert(data.message || "Pengguna berhasil dihapus permanen.");
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message || "Gagal menghapus akun.");
+      }
+    });
+  });
+
+  // 6. Bulk Import Modal Controls & CSV Parsing
+  const importModal = document.getElementById("user-import-modal");
+  const btnOpenImport = document.getElementById("btn-open-import");
+  const btnCloseImport = document.getElementById("btn-close-import-modal");
+  const btnCancelImport = document.getElementById("btn-cancel-import");
+  const importBackdrop = document.getElementById("import-modal-backdrop");
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("import-file-input") as HTMLInputElement | null;
+  const dropzoneText = document.getElementById("dropzone-text");
+  const previewContainer = document.getElementById("preview-container");
+  const previewTbody = document.getElementById("preview-tbody");
+  const validBadge = document.getElementById("valid-badge");
+  const invalidBadge = document.getElementById("invalid-badge");
+  const btnClearPreview = document.getElementById("btn-clear-preview");
+  const btnExecuteImport = document.getElementById("btn-execute-import") as HTMLButtonElement | null;
+  const importAlert = document.getElementById("import-alert");
+
+  let parsedRecords: any[] = [];
+
+  function openImportModal() {
+    importModal?.classList.remove("hidden");
+    resetImport();
+  }
+
+  function closeImportModal() {
+    importModal?.classList.add("hidden");
+  }
+
+  function resetImport() {
+    parsedRecords = [];
+    if (fileInput) fileInput.value = "";
+    if (dropzoneText) dropzoneText.textContent = "Klik atau seret file CSV ke area ini";
+    previewContainer?.classList.add("hidden");
+    if (previewTbody) previewTbody.innerHTML = "";
+    if (btnExecuteImport) btnExecuteImport.disabled = true;
+    if (importAlert) importAlert.classList.add("hidden");
+  }
+
+  btnOpenImport?.addEventListener("click", openImportModal);
+  btnCloseImport?.addEventListener("click", closeImportModal);
+  btnCancelImport?.addEventListener("click", closeImportModal);
+  importBackdrop?.addEventListener("click", closeImportModal);
+  btnClearPreview?.addEventListener("click", resetImport);
+  dropzone?.addEventListener("click", () => fileInput?.click());
+
+  dropzone?.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("border-emerald-500", "bg-emerald-50/50");
+  });
+
+  dropzone?.addEventListener("dragleave", () => {
+    dropzone.classList.remove("border-emerald-500", "bg-emerald-50/50");
+  });
+
+  dropzone?.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("border-emerald-500", "bg-emerald-50/50");
+    if (e.dataTransfer?.files.length) {
+      handleCsvFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput?.addEventListener("change", () => {
+    if (fileInput.files?.length) {
+      handleCsvFile(fileInput.files[0]);
+    }
+  });
+
+  function parseCsvText(text: string): string[][] {
+    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+    return lines.map(line => {
+      const row: string[] = [];
+      let inQuotes = false;
+      let current = "";
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"' || char === "'") {
+          inQuotes = !inQuotes;
+        } else if (char === "," && !inQuotes) {
+          row.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      row.push(current.trim());
+      return row;
+    });
+  }
+
+  function handleCsvFile(file: File) {
+    if (!file.name.endsWith(".csv")) {
+      alert("Hanya file .csv yang didukung.");
+      return;
+    }
+
+    if (dropzoneText) dropzoneText.textContent = `File terpilih: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const rows = parseCsvText(text);
+
+      if (rows.length < 2) {
+        alert("File CSV kosong atau tidak memiliki baris data.");
+        return;
+      }
+
+      // Headers: nis, nisn, nama_siswa, jenis_kelamin, tanggal_lahir, kode_cabang, nama_kelas, nama_wali, email_wali, no_wa_wali
+      parsedRecords = [];
+      let validCount = 0;
+      let invalidCount = 0;
+      if (previewTbody) previewTbody.innerHTML = "";
+
+      for (let i = 1; i < rows.length; i++) {
+        const col = rows[i];
+        if (col.length < 4) continue;
+
+        const nis = col[0] || "";
+        const nisn = col[1] || "";
+        const fullName = col[2] || "";
+        const gender = (col[3] || "L").toUpperCase().startsWith("P") ? "female" : "male";
+        const birthDate = col[4] || "";
+        const branchCode = col[5] || "pemancar-bintaro-01";
+        const className = col[6] || "";
+        const parentName = col[7] || "Wali Murid";
+        const parentEmail = col[8] || "";
+        const parentPhone = col[9] || "";
+
+        const isValid = Boolean(nis && fullName && parentEmail && parentEmail.includes("@"));
+
+        if (isValid) {
+          validCount++;
+          parsedRecords.push({
+            nis,
+            nisn,
+            fullName,
+            gender,
+            birthDate,
+            branchId: branchCode,
+            className,
+            parentName,
+            parentEmail,
+            parentPhone,
+          });
+        } else {
+          invalidCount++;
+        }
+
+        if (previewTbody) {
+          const tr = document.createElement("tr");
+          tr.className = isValid ? "hover:bg-slate-50" : "bg-rose-50/60";
+          tr.innerHTML = `
+            <td class="py-2 px-3 font-mono font-semibold">${nis || '<span class="text-rose-500">Kosong</span>'}</td>
+            <td class="py-2 px-3">${fullName || '<span class="text-rose-500">Kosong</span>'}</td>
+            <td class="py-2 px-3">${branchCode}</td>
+            <td class="py-2 px-3">${parentName}</td>
+            <td class="py-2 px-3 font-mono text-[11px]">${parentEmail || '<span class="text-rose-500">Invalid</span>'}</td>
+            <td class="py-2 px-3">
+              ${isValid 
+                ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Siap</span>' 
+                : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">Error</span>'}
+            </td>
+          `;
+          previewTbody.appendChild(tr);
+        }
+      }
+
+      previewContainer?.classList.remove("hidden");
+      if (validBadge) validBadge.textContent = `${validCount} Baris Valid`;
+      if (invalidBadge) {
+        if (invalidCount > 0) {
+          invalidBadge.textContent = `${invalidCount} Baris Error`;
+          invalidBadge.classList.remove("hidden");
+        } else {
+          invalidBadge.classList.add("hidden");
+        }
+      }
+
+      if (btnExecuteImport) {
+        btnExecuteImport.disabled = validCount === 0;
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Execute Import
+  btnExecuteImport?.addEventListener("click", async () => {
+    if (parsedRecords.length === 0) return;
+
+    const sendWelcomeEmail = (document.getElementById("import-send-email") as HTMLInputElement)?.checked;
+    const btnText = document.getElementById("btn-import-text");
+    btnExecuteImport.disabled = true;
+    if (btnText) btnText.textContent = "Memproses Import...";
+
+    try {
+      const res = await fetch("/api/admin/users/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records: parsedRecords,
+          sendWelcomeEmail,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal melakukan import.");
+
+      alert(`Sukses!\n${data.result.studentsCreated} siswa dan ${data.result.parentsCreated} akun wali baru berhasil dibuat.\n${data.result.parentsLinked} siswa dihubungkan ke wali yang telah terdaftar.`);
+      closeImportModal();
+      window.location.reload();
+
+    } catch (err: any) {
+      if (importAlert) {
+        importAlert.textContent = err.message || "Terjadi kesalahan saat memproses data.";
+        importAlert.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        importAlert.classList.remove("hidden");
+      }
+    } finally {
+      btnExecuteImport.disabled = false;
+      if (btnText) btnText.textContent = "Proses Import";
+    }
   });
 </script>

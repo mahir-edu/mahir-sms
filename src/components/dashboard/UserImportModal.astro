@@ -1,0 +1,124 @@
+---
+import type { BranchDocument } from "../../types/database";
+
+interface Props {
+  branches: BranchDocument[];
+}
+
+const { branches } = Astro.props;
+---
+
+<div id="user-import-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+  <!-- Backdrop -->
+  <div id="import-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="relative bg-white rounded-2xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 z-10">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+        <div>
+          <h3 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+            <span>📥 Import Massal Siswa & Wali Murid</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Unggah file CSV roster siswa untuk membuat akun wali dan mendaftarkan data siswa secara otomatis.
+          </p>
+        </div>
+        <button id="btn-close-import-modal" type="button" class="p-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Template Banner -->
+      <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div>
+          <span class="font-bold text-slate-800">Format Kolom Spreadsheet:</span>
+          <p class="text-slate-500 text-[11px] mt-0.5">
+            nis, nisn, nama_siswa, jenis_kelamin (L/P), tanggal_lahir, kode_cabang, nama_kelas, nama_wali, email_wali, no_wa_wali
+          </p>
+        </div>
+        <a 
+          href="/api/admin/users/template-csv" 
+          download 
+          class="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-300 transition-colors inline-flex items-center gap-1.5 no-underline"
+        >
+          <span>📄 Unduh Template CSV</span>
+        </a>
+      </div>
+
+      <!-- File Dropzone -->
+      <div id="dropzone" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition-colors mb-4 bg-slate-50/50">
+        <input type="file" id="import-file-input" accept=".csv" class="hidden" />
+        <div class="text-3xl mb-2">📁</div>
+        <p class="text-xs font-bold text-slate-700" id="dropzone-text">
+          Klik atau seret file CSV ke area ini
+        </p>
+        <p class="text-[11px] text-slate-400 mt-1">Hanya file berformat .csv yang didukung</p>
+      </div>
+
+      <!-- Status Alert -->
+      <div id="import-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Preview Table Container -->
+      <div id="preview-container" class="hidden mb-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-800">Pratinjau Data:</span>
+            <span id="valid-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200"></span>
+            <span id="invalid-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200"></span>
+          </div>
+          <button id="btn-clear-preview" type="button" class="text-xs text-slate-500 hover:text-rose-600 font-semibold cursor-pointer">
+            Ganti File
+          </button>
+        </div>
+
+        <div class="max-h-60 overflow-y-auto border border-slate-200 rounded-xl overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-50 text-slate-500 sticky top-0 border-b border-slate-200">
+              <tr>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">NIS</th>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">Nama Siswa</th>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">Cabang</th>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">Wali Murid</th>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">Email Wali</th>
+                <th class="py-2 px-3 text-[10px] font-bold uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody id="preview-tbody" class="divide-y divide-slate-100 bg-white">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Email Checkbox -->
+      <div class="flex items-center gap-2 pt-2 mb-4">
+        <input type="checkbox" id="import-send-email" checked class="w-4 h-4 text-emerald-600 rounded" />
+        <label for="import-send-email" class="text-xs text-slate-700 font-medium cursor-pointer">
+          Kirimkan email aktivasi & password sementara ke semua orang tua yang baru dibuat.
+        </label>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+        <button 
+          type="button" 
+          id="btn-cancel-import" 
+          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+        >
+          Tutup
+        </button>
+        <button 
+          type="button" 
+          id="btn-execute-import" 
+          disabled
+          class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span id="btn-import-text">Proses Import</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
