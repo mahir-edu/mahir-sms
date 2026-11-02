@@ -1,0 +1,163 @@
+---
+import { app } from "../../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { getUserProfile, getCalendarEventsForBranch, getAllBranches } from "../../../firebase/firestore";
+import DashboardLayout from "../../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
+
+/* Verify user session & ensure HQ Admin role */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+if (!userProfile || userProfile.role !== "hq_admin") {
+  return Astro.redirect("/dashboard");
+}
+
+const events = await getCalendarEventsForBranch();
+const branches = await getAllBranches();
+
+const workshopsCount = events.filter(e => e.eventType === "teacher_training").length;
+const onlineCount = events.filter(e => e.locationType === "online").length;
+
+function formatEventDate(ts: any): string {
+  if (!ts) return "-";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }) + " WIB";
+}
+---
+
+<DashboardLayout 
+  title="Kalender & Agenda Nasional" 
+  description="Pengelolaan jadwal akademik nasional, sertifikasi guru, dan webinar edukasi"
+  userProfile={userProfile}
+>
+  <DashboardPageHeader 
+    title="Kalender Akademik & Agenda Kegiatan"
+    description="Publikasikan kegiatan pelatihan pendidik, libur nasional, rapat franchise, dan webinar orang tua."
+    breadcrumbs={[
+      { label: "Central HQ Admin" },
+      { label: "Kalender & Event" }
+    ]}
+  >
+    <div slot="actions">
+      <button 
+        type="button" 
+        class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
+        onclick="alert('Formulir pembuatan agenda baru akan segera aktif.')"
+      >
+        <span>+ Jadwalkan Agenda Baru</span>
+      </button>
+    </div>
+  </DashboardPageHeader>
+
+  <!-- Metrics Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <DataMetricCard 
+      title="Total Agenda"
+      value={events.length}
+      subtext="Terjadwal di sistem"
+      icon="📅"
+      theme="indigo"
+    />
+    <DataMetricCard 
+      title="Pelatihan Guru"
+      value={workshopsCount}
+      subtext="Workshop & sertifikasi"
+      icon="👨‍🏫"
+      theme="emerald"
+    />
+    <DataMetricCard 
+      title="Sesi Daring"
+      value={onlineCount}
+      subtext="Via Google Meet / Zoom"
+      icon="💻"
+      theme="sky"
+    />
+    <DataMetricCard 
+      title="Notifikasi Otomatis"
+      value="Aktif"
+      subtext="Email pengingat peserta"
+      icon="🔔"
+      theme="lime"
+    />
+  </div>
+
+  <!-- Events List -->
+  <div class="space-y-4">
+    {events.length === 0 ? (
+      <div class="glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
+        <div class="text-4xl mb-2">📅</div>
+        <p class="font-bold text-slate-700 text-sm">Belum Ada Agenda Nasional</p>
+        <p class="text-xs mt-1">Jadwalkan agenda pertama untuk mengumumkan kegiatan ke unit sekolah.</p>
+      </div>
+    ) : (
+      events.map((evt) => (
+        <div class="glass-card glass-card-hover rounded-2xl p-5 border border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex flex-col items-center justify-center font-bold text-xs shrink-0">
+              <span>📅</span>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                  {evt.eventType}
+                </span>
+                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                  {evt.locationType === "online" ? "Daring" : "Luring"}
+                </span>
+                {evt.isMandatory && (
+                  <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-100 text-rose-800">
+                    Wajib
+                  </span>
+                )}
+              </div>
+              <h3 class="text-sm font-bold text-slate-900">{evt.title}</h3>
+              <p class="text-xs text-slate-500 mt-0.5 max-w-2xl">{evt.description}</p>
+              <div class="flex items-center gap-3 mt-2 text-[11px] font-semibold text-slate-400">
+                <span>Waktu: <strong class="text-slate-700">{formatEventDate(evt.startDate)}</strong></span>
+                <span>&bull;</span>
+                <span>Target: {evt.targetAudience?.scope === "all_branches" ? "Semua Cabang" : "Cabang Tertentu"}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="shrink-0 flex items-center gap-2 w-full md:w-auto">
+            {evt.onlineMeetingUrl && (
+              <a 
+                href={evt.onlineMeetingUrl} 
+                target="_blank" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors inline-block text-center w-full md:w-auto no-underline"
+              >
+                Tautan Pertemuan
+              </a>
+            )}
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</DashboardLayout>

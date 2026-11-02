@@ -28,13 +28,35 @@ const handleSignIn: APIRoute = async ({ request, cookies, redirect }) => {
   }
 
   /* Verify id token */
+  let decodedToken;
   try {
-    await auth.verifyIdToken(idToken);
+    decodedToken = await auth.verifyIdToken(idToken);
   } catch (error) {
     return new Response(JSON.stringify({ error: "Token otentikasi tidak valid atau telah kedaluwarsa." }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  /* Super Admin Auto-Promotion */
+  const SUPER_ADMINS = ["gregorius.w@gmail.com", "admin@mahir-edu.com"];
+  if (decodedToken.email && SUPER_ADMINS.includes(decodedToken.email.toLowerCase())) {
+    try {
+      const { db } = await import("../../../firebase/firestore");
+      const { Timestamp } = await import("firebase-admin/firestore");
+      await auth.setCustomUserClaims(decodedToken.uid, { role: "hq_admin", admin: true });
+      await db.collection("users").doc(decodedToken.uid).set({
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        displayName: decodedToken.name || "Gregorius (Super Admin)",
+        role: "hq_admin",
+        status: "active",
+        branchId: null,
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+    } catch (e) {
+      console.error("Super Admin auto-promotion error:", e);
+    }
   }
 
   /* Create and set session cookie */

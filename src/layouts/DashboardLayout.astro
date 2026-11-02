@@ -1,0 +1,296 @@
+---
+import "../styles/global.css";
+import Logo from "../components/Logo.astro";
+import LicenseStatusBadge from "../components/dashboard/LicenseStatusBadge.astro";
+import { getNavigationForRole } from "../config/navigation";
+import type { UserDocument, BranchDocument, BranchLicenseDocument, UserRole } from "../types/database";
+
+interface Props {
+  title?: string;
+  description?: string;
+  userProfile?: UserDocument | null;
+  activeBranch?: BranchDocument | null;
+  activeLicense?: BranchLicenseDocument | null;
+}
+
+const {
+  title = "Dashboard",
+  description = "Portal Manajemen Mahir SMS",
+  userProfile,
+  activeBranch,
+  activeLicense,
+} = Astro.props;
+
+const currentPath = Astro.url.pathname;
+const role: UserRole = userProfile?.role || "teacher";
+const navSections = getNavigationForRole(role);
+
+// Role badges & display label
+const roleLabels: Record<UserRole, string> = {
+  hq_admin: "Central HQ Admin",
+  branch_admin: "Admin Cabang",
+  teacher: "Pendidik",
+  parent: "Wali Siswa",
+  student: "Siswa",
+};
+
+const rolePillStyles: Record<UserRole, string> = {
+  hq_admin: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  branch_admin: "bg-purple-100 text-purple-800 border-purple-300",
+  teacher: "bg-sky-100 text-sky-800 border-sky-300",
+  parent: "bg-amber-100 text-amber-800 border-amber-300",
+  student: "bg-lime-100 text-lime-800 border-lime-300",
+};
+
+// Calculate license days remaining if available
+let daysRemaining: number | undefined;
+if (activeLicense?.dueDate) {
+  const due = activeLicense.dueDate.toDate ? activeLicense.dueDate.toDate() : new Date(activeLicense.dueDate);
+  const diffTime = due.getTime() - Date.now();
+  daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+}
+
+const isItemActive = (href: string, exact?: boolean) => {
+  if (exact) return currentPath === href;
+  return currentPath === href || (href !== "/dashboard" && currentPath.startsWith(href));
+};
+---
+
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-50">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title ? `${title} | Mahir SMS` : "Dashboard | Mahir SMS"}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#5C6096" />
+    
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="h-full flex flex-col antialiased text-slate-800 selection:bg-emerald-100 selection:text-emerald-900">
+    <!-- Top Decorative Gradient Line -->
+    <div class="h-1 bg-linear-to-r from-emerald-500 via-[#5C6096] to-[#B4CD4B] w-full shrink-0"></div>
+
+    <div class="flex-1 flex overflow-hidden">
+      {/* ========================================================================= */}
+      {/* DESKTOP SIDEBAR                                                           */}
+      {/* ========================================================================= */}
+      <aside class="hidden lg:flex lg:flex-col lg:w-68 bg-white border-r border-slate-200 shrink-0 select-none">
+        <!-- Brand Header -->
+        <div class="h-16 flex items-center px-6 border-b border-slate-100">
+          <Logo size="sm" showTagline={false} />
+        </div>
+
+        <!-- Navigation Links -->
+        <div class="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+          {navSections.map((section) => (
+            <div>
+              {section.title && (
+                <div class="px-3 mb-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                  {section.title}
+                </div>
+              )}
+              <div class="space-y-1">
+                {section.items.map((item) => {
+                  const active = isItemActive(item.href, item.exact);
+                  return (
+                    <a
+                      href={item.href}
+                      class={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all duration-150 no-underline ${
+                        active
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      }`}
+                    >
+                      <div class="flex items-center gap-2.5">
+                        <span class="text-sm">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span class={`text-[10px] px-1.5 py-0.5 rounded-md font-bold ${
+                          active ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <!-- Sidebar Footer / User Quick Info -->
+        <div class="p-4 border-t border-slate-100 bg-slate-50/70">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-linear-to-tr from-emerald-500 to-[#5C6096] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
+              {(userProfile?.displayName || "U")[0]}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs font-bold text-slate-900 truncate">
+                {userProfile?.displayName || "Pengguna"}
+              </div>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <span class={`text-[10px] font-bold px-2 py-0.2 rounded-full border ${rolePillStyles[role]}`}>
+                  {roleLabels[role]}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* ========================================================================= */}
+      {/* MOBILE SIDEBAR OVERLAY / DRAWER                                           */}
+      {/* ========================================================================= */}
+      <div id="mobile-sidebar-backdrop" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 hidden transition-opacity"></div>
+      <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 w-72 bg-white shadow-2xl z-50 transform -translate-x-full transition-transform duration-200 ease-in-out lg:hidden flex flex-col">
+        <div class="h-16 flex items-center justify-between px-6 border-b border-slate-100">
+          <Logo size="sm" showTagline={false} />
+          <button id="btn-close-sidebar" class="p-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+          {navSections.map((section) => (
+            <div>
+              {section.title && (
+                <div class="px-3 mb-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                  {section.title}
+                </div>
+              )}
+              <div class="space-y-1">
+                {section.items.map((item) => {
+                  const active = isItemActive(item.href, item.exact);
+                  return (
+                    <a
+                      href={item.href}
+                      class={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all no-underline ${
+                        active
+                          ? "bg-emerald-500 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      }`}
+                    >
+                      <div class="flex items-center gap-2.5">
+                        <span class="text-sm">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      {/* ========================================================================= */}
+      {/* MAIN CONTENT AREA                                                         */}
+      {/* ========================================================================= */}
+      <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <!-- Top App Bar -->
+        <header class="h-16 bg-white border-b border-slate-200 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 lg:px-8">
+          <!-- Left: Mobile Menu Toggle & Unit Indicator -->
+          <div class="flex items-center gap-3">
+            <button id="btn-open-sidebar" class="p-2 -ml-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 lg:hidden cursor-pointer">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <!-- Branch Indicator Badge -->
+            <div class="flex items-center gap-2">
+              {role === "hq_admin" ? (
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800">
+                  <span>🏢</span>
+                  <span>Kantor Pusat (HQ)</span>
+                </div>
+              ) : activeBranch ? (
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">
+                  <span>🏫</span>
+                  <span>{activeBranch.name}</span>
+                </div>
+              ) : (
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">
+                  <span>🎓</span>
+                  <span>Mahir Edu Community</span>
+                </div>
+              )}
+
+              {/* License Status Pill if applicable */}
+              {activeLicense && (
+                <div class="hidden sm:block">
+                  <LicenseStatusBadge status={activeLicense.status} daysRemaining={daysRemaining} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <!-- Right: Profile & Actions -->
+          <div class="flex items-center gap-3">
+            <!-- Public Website Shortcut -->
+            <a
+              href="/"
+              target="_blank"
+              class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+            >
+              <span>Web Publik</span>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+
+            <!-- Sign Out Action -->
+            <form action="/api/auth/signout" method="get" class="m-0">
+              <button
+                type="submit"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+              >
+                Keluar
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <!-- Page Main Container -->
+        <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          <slot />
+        </main>
+      </div>
+    </div>
+
+    <!-- Client-side script for mobile drawer toggling -->
+    <script>
+      const openBtn = document.getElementById("btn-open-sidebar");
+      const closeBtn = document.getElementById("btn-close-sidebar");
+      const sidebar = document.getElementById("mobile-sidebar");
+      const backdrop = document.getElementById("mobile-sidebar-backdrop");
+
+      function toggleSidebar(open: boolean) {
+        if (!sidebar || !backdrop) return;
+        if (open) {
+          sidebar.classList.remove("-translate-x-full");
+          backdrop.classList.remove("hidden");
+        } else {
+          sidebar.classList.add("-translate-x-full");
+          backdrop.classList.add("hidden");
+        }
+      }
+
+      openBtn?.addEventListener("click", () => toggleSidebar(true));
+      closeBtn?.addEventListener("click", () => toggleSidebar(false));
+      backdrop?.addEventListener("click", () => toggleSidebar(false));
+    </script>
+  </body>
+</html>

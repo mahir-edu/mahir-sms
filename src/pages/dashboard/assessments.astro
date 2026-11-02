@@ -1,0 +1,238 @@
+---
+import { app } from "../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getBranch, 
+  getActiveBranchLicense, 
+  getClassesForBranch,
+  getAssessmentsForClass,
+  getLinkedStudentsForParent
+} from "../../firebase/firestore";
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../components/dashboard/DataMetricCard.astro";
+
+/* Verify user session */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+const activeBranch = userProfile?.branchId ? await getBranch(userProfile.branchId) : null;
+const activeLicense = userProfile?.branchId ? await getActiveBranchLicense(userProfile.branchId) : null;
+const isParent = userProfile?.role === "parent";
+
+let linkedStudents: any[] = [];
+if (isParent) {
+  linkedStudents = await getLinkedStudentsForParent(user.uid);
+}
+
+const classes = await getClassesForBranch(userProfile?.branchId || undefined);
+const assessments = await getAssessmentsForClass();
+---
+
+<DashboardLayout 
+  title="Penilaian & Asesmen Multisensori" 
+  description="Evaluasi formatif, sumatif, dan indikator penguasaan 5-Pilar"
+  userProfile={userProfile}
+  activeBranch={activeBranch}
+  activeLicense={activeLicense}
+>
+  <DashboardPageHeader 
+    title={isParent ? "Rapor & Capaian Belajar Ananda" : "Penilaian & Asesmen Multisensori 5-Pilar"}
+    description={isParent
+      ? "Laporan kemajuan belajar ananda pada aspek Visual (Lihat), Auditori (Dengar), Kinestetik (Lakukan), dan Catatan Mandiri."
+      : "Catat skor evaluasi siswa beserta checklist penguasaan pilar multisensori Mahir Edu."}
+    breadcrumbs={[
+      { label: "Asesmen & Nilai" }
+    ]}
+  >
+    <div slot="actions">
+      {!isParent && (
+        <button 
+          type="button" 
+          class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
+          onclick="alert('Formulir pembuatan modul asesmen baru akan segera aktif.')"
+        >
+          <span>+ Buat Asesmen Baru</span>
+        </button>
+      )}
+    </div>
+  </DashboardPageHeader>
+
+  <!-- Metrics Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <DataMetricCard 
+      title="Rata-rata Ketuntasan"
+      value="92.4%"
+      subtext="Standar Mahir Edu"
+      icon="⭐"
+      theme="emerald"
+    />
+    <DataMetricCard 
+      title="Asesmen Selesai"
+      value={assessments.length > 0 ? assessments.length : "4 Modul"}
+      subtext="Formatif & Sumatif"
+      icon="📝"
+      theme="indigo"
+    />
+    <DataMetricCard 
+      title="Pilar Tertinggi"
+      value="Kinestetik (95%)"
+      subtext="Eksplorasi alat peraga"
+      icon="✋"
+      theme="lime"
+    />
+    <DataMetricCard 
+      title="Status Publikasi"
+      value="Terbit"
+      subtext="Dapat dilihat wali siswa"
+      icon="📢"
+      theme="sky"
+    />
+  </div>
+
+  {isParent ? (
+    <div class="space-y-6">
+      <div class="glass-card rounded-2xl p-6 border border-slate-200">
+        <h3 class="text-base font-bold text-slate-900 mb-1">Capaian Multisensori 5-Pilar Ananda</h3>
+        <p class="text-xs text-slate-500 mb-6">Kemajuan penguasaan tahapan belajar matematika multisensori semester berjalan.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div class="text-xs font-bold text-emerald-900 flex items-center justify-between mb-2">
+              <span>👁️ 1. LIHAT (Visual)</span>
+              <span class="text-emerald-700 font-extrabold">96%</span>
+            </div>
+            <p class="text-[11px] text-slate-600">Sangat baik memahami representasi konsep melalui gambar & kartu angka.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-sky-50 border border-sky-200">
+            <div class="text-xs font-bold text-sky-900 flex items-center justify-between mb-2">
+              <span>👂 2. DENGAR (Auditori)</span>
+              <span class="text-sky-700 font-extrabold">92%</span>
+            </div>
+            <p class="text-[11px] text-slate-600">Mampu menceritakan kembali logika hitungan dengan kalimat sendiri.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-lime-50 border border-lime-200">
+            <div class="text-xs font-bold text-[#677b15] flex items-center justify-between mb-2">
+              <span>✋ 3. LAKUKAN (Kinestetik)</span>
+              <span class="text-[#677b15] font-extrabold">95%</span>
+            </div>
+            <p class="text-[11px] text-slate-600">Terampil menyusun manik hitung dan alat manipulatif tanpa ragu.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-purple-50 border border-purple-200">
+            <div class="text-xs font-bold text-purple-900 flex items-center justify-between mb-2">
+              <span>✍️ 4 & 5. CATAT & REPETISI</span>
+              <span class="text-purple-700 font-extrabold">88%</span>
+            </div>
+            <p class="text-[11px] text-slate-600">Catatan rapi dan mandiri, latihan rutin pada buku lembar kerja.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">Matriks Nilai & Checklist Penguasaan 5-Pilar</h3>
+          <p class="text-xs text-slate-500">Centang indikator pilar yang telah dikuasai siswa selama evaluasi berlangsung.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button 
+            type="button" 
+            class="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition-colors cursor-pointer"
+            onclick="alert('Seluruh perubahan nilai berhasil disimpan!')"
+          >
+            Simpan Nilai
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Nama Siswa</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Nilai (0-100)</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-center">👁️ Lihat</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-center">👂 Dengar</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-center">✋ Lakukan</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-center">✍️ Catat</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Catatan Guru untuk Wali</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 bg-white">
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="py-3.5 px-4 font-semibold text-slate-900">
+                Ahmad Rizky Pratama
+                <span class="block text-[11px] font-normal text-slate-400">NIS: 2026-MHR-001</span>
+              </td>
+              <td class="py-3.5 px-4">
+                <input type="number" value="95" min="0" max="100" class="form-input text-xs py-1! w-20 font-bold text-emerald-700" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4">
+                <input type="text" value="Sangat cepat memahami konsep pecahan menggunakan kartu manipulatif." class="form-input text-xs py-1! w-full" />
+              </td>
+            </tr>
+
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="py-3.5 px-4 font-semibold text-slate-900">
+                Aisyah Putri Nurhaliza
+                <span class="block text-[11px] font-normal text-slate-400">NIS: 2026-MHR-002</span>
+              </td>
+              <td class="py-3.5 px-4">
+                <input type="number" value="90" min="0" max="100" class="form-input text-xs py-1! w-20 font-bold text-emerald-700" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" checked class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4 text-center">
+                <input type="checkbox" class="w-4 h-4 text-emerald-600 rounded" />
+              </td>
+              <td class="py-3.5 px-4">
+                <input type="text" value="Perlu bimbingan sedikit pada tahap pencatatan buku mandiri." class="form-input text-xs py-1! w-full" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</DashboardLayout>

@@ -1,0 +1,138 @@
+---
+import { app } from "../../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { getUserProfile, getAllCurriculums } from "../../../firebase/firestore";
+import DashboardLayout from "../../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
+
+/* Verify user session & ensure HQ Admin role */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+if (!userProfile || userProfile.role !== "hq_admin") {
+  return Astro.redirect("/dashboard");
+}
+
+const curriculums = await getAllCurriculums();
+const totalModules = curriculums.reduce((sum, c) => sum + (c.totalModules || 0), 0);
+const totalMaterials = curriculums.reduce((sum, c) => sum + (c.totalMaterials || 0), 0);
+---
+
+<DashboardLayout 
+  title="Pustaka Kurikulum & Modul" 
+  description="Manajemen kurikulum nasional multisensori Mahir Edu"
+  userProfile={userProfile}
+>
+  <DashboardPageHeader 
+    title="Pustaka Kurikulum & Modul Ajar"
+    description="Kelola master kurikulum multisensori 5-Pilar, silabus, dan modul pengajaran untuk seluruh unit Sekolah Pemancar."
+    breadcrumbs={[
+      { label: "Central HQ Admin" },
+      { label: "Pustaka Kurikulum" }
+    ]}
+  >
+    <div slot="actions">
+      <button 
+        type="button" 
+        class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
+        onclick="alert('Formulir pembuatan kurikulum baru akan segera aktif.')"
+      >
+        <span>+ Tambah Kurikulum Baru</span>
+      </button>
+    </div>
+  </DashboardPageHeader>
+
+  <!-- Metrics Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <DataMetricCard 
+      title="Total Kurikulum"
+      value={curriculums.length}
+      subtext="Kurikulum master aktif"
+      icon="📚"
+      theme="indigo"
+    />
+    <DataMetricCard 
+      title="Total Modul Ajar"
+      value={totalModules}
+      subtext="RPP multisensori terpadu"
+      icon="📝"
+      theme="emerald"
+    />
+    <DataMetricCard 
+      title="Materi Terkait"
+      value={totalMaterials}
+      subtext="Worksheet & alat peraga"
+      icon="📁"
+      theme="sky"
+    />
+    <DataMetricCard 
+      title="Metodologi 5-Pilar"
+      value="100%"
+      subtext="Standar terintegrasi"
+      icon="⭐"
+      theme="lime"
+    />
+  </div>
+
+  <!-- Curriculum Card Grid -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {curriculums.length === 0 ? (
+      <div class="col-span-full glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
+        <div class="text-4xl mb-2">📚</div>
+        <p class="font-bold text-slate-700 text-sm">Belum Ada Kurikulum Master</p>
+        <p class="text-xs mt-1">Jalankan seed database atau tambahkan kurikulum baru untuk memulai.</p>
+      </div>
+    ) : (
+      curriculums.map((curr) => (
+        <div class="glass-card glass-card-hover rounded-2xl p-6 border border-slate-200 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                Kelas {curr.gradeLevel} SD
+              </span>
+              <span class="text-xs font-mono font-semibold text-slate-400">v{curr.version}</span>
+            </div>
+
+            <h3 class="text-base font-bold text-slate-900 mb-2 leading-snug">
+              {curr.title}
+            </h3>
+            <p class="text-xs text-slate-600 leading-relaxed mb-4">
+              {curr.description}
+            </p>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-3 text-slate-500 font-semibold text-[11px]">
+              <span>📝 {curr.totalModules || 0} Modul</span>
+              <span>&bull;</span>
+              <span>📁 {curr.totalMaterials || 0} Lembar Kerja</span>
+            </div>
+            <a 
+              href="/dashboard/admin/materials" 
+              class="text-emerald-700 hover:text-emerald-800 font-bold hover:underline"
+            >
+              Lihat Materi &rarr;
+            </a>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</DashboardLayout>

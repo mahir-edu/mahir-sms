@@ -1,0 +1,122 @@
+---
+import { app } from "../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getBranch, 
+  getActiveBranchLicense, 
+  getLessonMaterialsForBranch 
+} from "../../firebase/firestore";
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../components/dashboard/DashboardPageHeader.astro";
+
+/* Verify user session */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+const activeBranch = userProfile?.branchId ? await getBranch(userProfile.branchId) : null;
+const activeLicense = userProfile?.branchId ? await getActiveBranchLicense(userProfile.branchId) : null;
+
+// License check & materials retrieval
+let materialsResult = {
+  allowed: false,
+  materials: [] as any[],
+  reason: "Cabang Anda belum memiliki unit sekolah atau lisensi aktif.",
+};
+
+if (userProfile?.role === "hq_admin") {
+  // HQ Admin has unrestricted access
+  return Astro.redirect("/dashboard/admin/materials");
+} else if (userProfile?.branchId) {
+  materialsResult = await getLessonMaterialsForBranch(userProfile.branchId);
+}
+---
+
+<DashboardLayout 
+  title="Pustaka Bahan Ajar" 
+  description="Koleksi modul multisensori dan lembar aktivitas berlisensi"
+  userProfile={userProfile}
+  activeBranch={activeBranch}
+  activeLicense={activeLicense}
+>
+  <DashboardPageHeader 
+    title="Pustaka Bahan Ajar & Modul Multisensori"
+    description="Akses lembar kerja siswa, panduan alat peraga, dan slide pembelajaran sesuai paket lisensi aktif sekolah Anda."
+    breadcrumbs={[
+      { label: "Pustaka Materi" }
+    ]}
+  />
+
+  {/* License Gate Warning if Not Allowed */}
+  {!materialsResult.allowed ? (
+    <div class="glass-card rounded-2xl p-8 text-center border-l-4 border-l-amber-500 bg-amber-50/30">
+      <div class="text-4xl mb-3">🔒</div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Akses Bahan Ajar Terkunci</h3>
+      <p class="text-xs text-slate-600 max-w-lg mx-auto mb-4">
+        {materialsResult.reason}
+      </p>
+      <a 
+        href="/dashboard" 
+        class="btn-outline text-xs py-2! px-4! inline-flex items-center gap-1.5"
+      >
+        <span>&larr; Kembali ke Dashboard</span>
+      </a>
+    </div>
+  ) : (
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {materialsResult.materials.length === 0 ? (
+        <div class="col-span-full glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
+          <div class="text-4xl mb-2">📁</div>
+          <p class="font-bold text-slate-700 text-sm">Belum Ada Materi untuk Kurikulum Unit Anda</p>
+          <p class="text-xs mt-1">Central Admin sedang menyiapkan materi tambahan untuk semester ini.</p>
+        </div>
+      ) : (
+        materialsResult.materials.map((mat) => (
+          <div class="glass-card glass-card-hover rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                  {mat.materialType}
+                </span>
+                <span class="text-[11px] font-bold text-emerald-700">✓ Lisensi Terpenuhi</span>
+              </div>
+
+              <h4 class="text-sm font-bold text-slate-900 mb-1 leading-snug">{mat.title}</h4>
+              <p class="text-xs text-slate-500 mb-4">{mat.description || "Materi pembelajaran multisensori terpadu."}</p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span class="text-[11px] text-slate-400">{mat.fileName || "dokumen.pdf"}</span>
+              <a 
+                href={mat.fileUrl || "#"} 
+                target="_blank" 
+                class="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors inline-flex items-center gap-1.5 no-underline"
+              >
+                <span>Unduh</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )}
+</DashboardLayout>

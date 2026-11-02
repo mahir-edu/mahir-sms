@@ -45,9 +45,54 @@ export const collections = {
 // ==========================================
 // 1. User Helpers
 // ==========================================
+const SUPER_ADMIN_EMAILS = ["gregorius.w@gmail.com", "admin@mahir-edu.com"];
+
 export async function getUserProfile(uid: string): Promise<UserDocument | null> {
   const doc = await collections.users().doc(uid).get();
-  return doc.exists ? (doc.data() as UserDocument) : null;
+  
+  if (doc.exists) {
+    const data = doc.data() as UserDocument;
+    // Auto-promote designated super admin emails
+    if (data.email && SUPER_ADMIN_EMAILS.includes(data.email.toLowerCase())) {
+      if (data.role !== "hq_admin" || data.status !== "active") {
+        data.role = "hq_admin";
+        data.status = "active";
+        data.branchId = null;
+        await collections.users().doc(uid).set({
+          role: "hq_admin",
+          status: "active",
+          branchId: null,
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+      }
+    }
+    return data;
+  }
+
+  // If user profile doc doesn't exist yet, check Firebase Auth for super admin email
+  try {
+    const { getAuth } = await import("firebase-admin/auth");
+    const authUser = await getAuth(app).getUser(uid);
+    if (authUser.email && SUPER_ADMIN_EMAILS.includes(authUser.email.toLowerCase())) {
+      const superAdminProfile: UserDocument = {
+        uid,
+        email: authUser.email,
+        displayName: authUser.displayName || "Gregorius (Super Admin)",
+        role: "hq_admin",
+        status: "active",
+        branchId: null,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+      await collections.users().doc(uid).set(superAdminProfile, { merge: true });
+      await getAuth(app).setCustomUserClaims(uid, { role: "hq_admin", admin: true });
+      return superAdminProfile;
+    }
+  } catch {
+    // Auth lookup failed or user not found
+  }
+
+  return null;
 }
 
 export async function upsertUserProfile(user: Partial<UserDocument> & { uid: string }): Promise<void> {
@@ -89,6 +134,21 @@ export async function getActiveBranchLicense(branchId: string): Promise<BranchLi
   }
 
   return license;
+}
+
+export async function getAllBranchLicenses(): Promise<BranchLicenseDocument[]> {
+  const snapshot = await collections.branchLicenses().orderBy("createdAt", "desc").get();
+  return snapshot.docs.map(doc => doc.data() as BranchLicenseDocument);
+}
+
+export async function getAllCurriculums(): Promise<CurriculumDocument[]> {
+  const snapshot = await collections.curriculums().orderBy("createdAt", "desc").get();
+  return snapshot.docs.map(doc => doc.data() as CurriculumDocument);
+}
+
+export async function getAllLessonMaterials(): Promise<LessonMaterialDocument[]> {
+  const snapshot = await collections.lessonMaterials().orderBy("createdAt", "desc").get();
+  return snapshot.docs.map(doc => doc.data() as LessonMaterialDocument);
 }
 
 // ==========================================
@@ -481,5 +541,31 @@ export async function getLinkedStudentsForParent(parentUid: string): Promise<Stu
     .where("parentUids", "array-contains", parentUid)
     .get();
   return snapshot.docs.map(doc => doc.data() as StudentDocument);
+}
+
+export async function getClassesForBranch(branchId?: string): Promise<ClassDocument[]> {
+  let query = collections.classes() as FirebaseFirestore.Query;
+  if (branchId) {
+    query = query.where("branchId", "==", branchId);
+  }
+  const snapshot = await query.orderBy("name", "asc").get();
+  return snapshot.docs.map(doc => doc.data() as ClassDocument);
+}
+
+export async function getStudentsForClass(classId: string): Promise<StudentDocument[]> {
+  const snapshot = await collections.students()
+    .where("currentClassId", "==", classId)
+    .orderBy("fullName", "asc")
+    .get();
+  return snapshot.docs.map(doc => doc.data() as StudentDocument);
+}
+
+export async function getAssessmentsForClass(classId?: string): Promise<AssessmentDocument[]> {
+  let query = collections.assessments() as FirebaseFirestore.Query;
+  if (classId) {
+    query = query.where("classId", "==", classId);
+  }
+  const snapshot = await query.orderBy("assessmentDate", "desc").get();
+  return snapshot.docs.map(doc => doc.data() as AssessmentDocument);
 }
 

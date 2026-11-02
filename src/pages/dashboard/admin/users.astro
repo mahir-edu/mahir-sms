@@ -2,7 +2,7 @@
 import { app } from "../../../firebase/server";
 import { getAuth } from "firebase-admin/auth";
 import { getUserProfile, getAllUsers, getAllBranches } from "../../../firebase/firestore";
-import BaseLayout from "../../../layouts/baselayout.astro";
+import DashboardLayout from "../../../layouts/DashboardLayout.astro";
 import "../../../styles/global.css";
 
 /* Verify user session & ensure HQ Admin role */
@@ -44,8 +44,12 @@ const prospectParents = parents.filter(p => p.parentMetadata?.isProspect).length
 const linkedParents = parents.length - prospectParents;
 ---
 
-<BaseLayout title="Manajemen Pengguna & Verifikasi" description="Portal Central HQ Admin untuk memverifikasi akun guru dan mengelola pengguna">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+<DashboardLayout 
+  title="Manajemen Pengguna & Verifikasi" 
+  description="Portal Central HQ Admin untuk memverifikasi akun guru dan mengelola pengguna"
+  userProfile={userProfile}
+>
+  <div>
     <!-- Top Breadcrumb & Navigation -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
       <div>
@@ -72,7 +76,7 @@ const linkedParents = parents.length - prospectParents;
       <div class="flex items-center gap-3">
         <a 
           href="/dashboard" 
-          class="btn-outline text-xs !py-2.5 !px-4 flex items-center gap-2"
+          class="btn-outline text-xs py-2.5! px-4! flex items-center gap-2"
         >
           <span>&larr;</span>
           <span>Kembali ke Dashboard</span>
@@ -115,16 +119,16 @@ const linkedParents = parents.length - prospectParents;
       </div>
 
       <!-- Parents & Prospects -->
-      <div class="glass-card p-5 rounded-2xl border-l-4 border-l-[#5C6096]">
+      <div class="glass-card p-5 rounded-2xl border-l-4 border-l-brand-indigo">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Orang Tua / Prospek</span>
-          <span class="w-8 h-8 rounded-lg bg-[#5C6096]/15 text-[#5C6096] flex items-center justify-center font-bold text-sm">👨‍👩‍👦</span>
+          <span class="w-8 h-8 rounded-lg bg-brand-indigo/15 text-brand-indigo flex items-center justify-center font-bold text-sm">👨‍👩‍👦</span>
         </div>
         <div class="text-3xl font-extrabold text-slate-900">{parents.length}</div>
         <div class="text-[11px] text-slate-600 mt-1 flex items-center gap-2">
           <span class="text-emerald-700 font-bold">{linkedParents} Terhubung</span>
           <span>&bull;</span>
-          <span class="text-[#5C6096] font-bold">{prospectParents} Prospek Baru</span>
+          <span class="text-brand-indigo font-bold">{prospectParents} Prospek Baru</span>
         </div>
       </div>
     </div>
@@ -143,7 +147,7 @@ const linkedParents = parents.length - prospectParents;
             type="text" 
             id="search-input" 
             placeholder="Cari nama atau email..." 
-            class="form-input !pl-9 text-xs"
+            class="form-input pl-9! text-xs"
           />
         </div>
 
@@ -255,7 +259,7 @@ const linkedParents = parents.length - prospectParents;
                   </td>
 
                   <!-- Branch Affiliation -->
-                  <td class="py-3.5 px-4 text-slate-700 font-medium max-w-[200px] truncate">
+                  <td class="py-3.5 px-4 text-slate-700 font-medium max-w-50 truncate">
                     {branchName}
                   </td>
 
@@ -378,7 +382,7 @@ const linkedParents = parents.length - prospectParents;
       </div>
     </div>
   </div>
-</BaseLayout>
+</DashboardLayout>
 
 <script>
   const searchInput = document.querySelector("#search-input") as HTMLInputElement | null;

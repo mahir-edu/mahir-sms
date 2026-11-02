@@ -1,0 +1,89 @@
+---
+import type { LicenseStatus } from "../../types/database";
+
+interface Props {
+  status: LicenseStatus;
+  daysRemaining?: number;
+  className?: string;
+  showIcon?: boolean;
+}
+
+const { status, daysRemaining, className = "", showIcon = true } = Astro.props;
+
+let badgeConfig = {
+  label: "Aktif",
+  classes: "bg-emerald-50 text-emerald-800 border-emerald-300",
+  dotColor: "bg-emerald-500",
+  icon: "🟢",
+};
+
+switch (status) {
+  case "active":
+    if (typeof daysRemaining === "number" && daysRemaining <= 14) {
+      badgeConfig = {
+        label: `Jatuh Tempo (H-${daysRemaining})`,
+        classes: "bg-amber-50 text-amber-800 border-amber-300",
+        dotColor: "bg-amber-500",
+        icon: "🟡",
+      };
+    } else {
+      badgeConfig = {
+        label: "Lisensi Aktif",
+        classes: "bg-emerald-50 text-emerald-800 border-emerald-300",
+        dotColor: "bg-emerald-500",
+        icon: "🟢",
+      };
+    }
+    break;
+
+  case "pending_renewal":
+    badgeConfig = {
+      label: "Perlu Perpanjangan",
+      classes: "bg-amber-50 text-amber-800 border-amber-300",
+      dotColor: "bg-amber-500",
+      icon: "🟡",
+    };
+    break;
+
+  case "in_grace_period":
+    badgeConfig = {
+      label: "Masa Tenggang",
+      classes: "bg-orange-50 text-orange-800 border-orange-300",
+      dotColor: "bg-orange-500",
+      icon: "🟠",
+    };
+    break;
+
+  case "expired":
+    badgeConfig = {
+      label: "Kedaluwarsa",
+      classes: "bg-rose-50 text-rose-800 border-rose-300",
+      dotColor: "bg-rose-500",
+      icon: "🔴",
+    };
+    break;
+
+  case "suspended":
+    badgeConfig = {
+      label: "Ditangguhkan",
+      classes: "bg-slate-100 text-slate-700 border-slate-300",
+      dotColor: "bg-slate-400",
+      icon: "⚪",
+    };
+    break;
+
+  case "trial":
+    badgeConfig = {
+      label: "Uji Coba (Trial)",
+      classes: "bg-sky-50 text-sky-800 border-sky-300",
+      dotColor: "bg-sky-500",
+      icon: "🔵",
+    };
+    break;
+}
+---
+
+<span class={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badgeConfig.classes} ${className}`}>
+  {showIcon && <span class={`w-1.5 h-1.5 rounded-full ${badgeConfig.dotColor} animate-pulse`}></span>}
+  <span>{badgeConfig.label}</span>
+</span>

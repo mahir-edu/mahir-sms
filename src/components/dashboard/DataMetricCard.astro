@@ -1,0 +1,73 @@
+---
+interface Props {
+  title: string;
+  value: string | number;
+  subtext?: string;
+  icon: string;
+  theme?: "emerald" | "indigo" | "sky" | "lime" | "amber" | "rose";
+  href?: string;
+}
+
+const {
+  title,
+  value,
+  subtext,
+  icon,
+  theme = "emerald",
+  href,
+} = Astro.props;
+
+const borderTheme = {
+  emerald: "border-l-emerald-500",
+  indigo: "border-l-brand-indigo",
+  sky: "border-l-sky-500",
+  lime: "border-l-brand-lime",
+  amber: "border-l-amber-500",
+  rose: "border-l-rose-500",
+}[theme];
+
+const iconBgTheme = {
+  emerald: "bg-emerald-100 text-emerald-700",
+  indigo: "bg-brand-indigo/15 text-brand-indigo",
+  sky: "bg-sky-100 text-sky-700",
+  lime: "bg-brand-lime/25 text-[#677b15]",
+  amber: "bg-amber-100 text-amber-700",
+  rose: "bg-rose-100 text-rose-700",
+}[theme];
+
+const textTheme = {
+  emerald: "text-emerald-700",
+  indigo: "text-brand-indigo",
+  sky: "text-sky-700",
+  lime: "text-[#677b15]",
+  amber: "text-amber-700",
+  rose: "text-rose-700",
+}[theme];
+
+const Component = href ? "a" : "div";
+---
+
+<Component
+  href={href}
+  class={`glass-card glass-card-hover p-5 rounded-2xl border-l-4 ${borderTheme} flex flex-col justify-between transition-all duration-200 ${
+    href ? "hover:scale-[1.01] block cursor-pointer no-underline" : ""
+  }`}
+>
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</span>
+      <span class={`w-8 h-8 rounded-lg ${iconBgTheme} flex items-center justify-center font-bold text-sm shadow-xs`}>
+        {icon}
+      </span>
+    </div>
+    <div class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+      {value}
+    </div>
+  </div>
+
+  {subtext && (
+    <div class={`flex items-center gap-1.5 mt-2.5 text-xs font-semibold ${textTheme}`}>
+      <span>{subtext}</span>
+    </div>
+  )}
+</Component>
