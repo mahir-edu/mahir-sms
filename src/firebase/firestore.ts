@@ -831,3 +831,157 @@ export async function bulkImportStudentsAndParents(params: {
   };
 }
 
+// ==========================================
+// 11. School Branch & Franchise Lifecycle Helpers
+// ==========================================
+export async function getStaffForBranch(branchId: string): Promise<UserDocument[]> {
+  const snapshot = await collections.users()
+    .where("branchId", "==", branchId)
+    .where("role", "in", ["branch_admin", "teacher"])
+    .get();
+  return snapshot.docs.map(doc => doc.data() as UserDocument);
+}
+
+export async function getStudentsForBranch(branchId: string): Promise<StudentDocument[]> {
+  const snapshot = await collections.students()
+    .where("branchId", "==", branchId)
+    .get();
+  const students = snapshot.docs.map(doc => doc.data() as StudentDocument);
+  return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
+export interface CreateBranchWithLicenseParams {
+  name: string;
+  code: string;
+  address: {
+    street: string;
+    city: string;
+    province: string;
+    postalCode: string;
+  };
+  contact: {
+    email: string;
+    phone: string;
+    headmasterName: string;
+  };
+  license: {
+    packageType: "basic" | "standard" | "premium" | "enterprise";
+    issueDate?: string;
+    startDate?: string;
+    dueDate?: string;
+    expiryDate?: string;
+    gracePeriodDays?: number;
+    maxTeachers?: number;
+    maxStudents?: number;
+    allowedCurriculums?: string[];
+  };
+  adminUid: string;
+}
+
+export async function createBranchWithLicense(params: CreateBranchWithLicenseParams): Promise<{ branchId: string; licenseId: string }> {
+  const branchId = "pemancar-" + params.code.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+  const licenseId = "lic-" + params.code.toLowerCase().replace(/[^a-z0-9]/g, "-") + "-" + new Date().getFullYear();
+  const now = Timestamp.now();
+
+  const issueTs = params.license.issueDate ? Timestamp.fromDate(new Date(params.license.issueDate)) : now;
+  const startTs = params.license.startDate ? Timestamp.fromDate(new Date(params.license.startDate)) : now;
+  const dueTs = params.license.dueDate ? Timestamp.fromDate(new Date(params.license.dueDate)) : Timestamp.fromDate(new Date(Date.now() + 335 * 86400000));
+  const expiryTs = params.license.expiryDate ? Timestamp.fromDate(new Date(params.license.expiryDate)) : Timestamp.fromDate(new Date(Date.now() + 365 * 86400000));
+
+  const branchDoc: BranchDocument = {
+    id: branchId,
+    name: params.name.trim(),
+    code: params.code.trim().toUpperCase(),
+    address: params.address,
+    contact: params.contact,
+    licenseStatus: "active",
+    activeLicenseId: licenseId,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const licenseKey = "MHR-LIC-" + Math.random().toString(36).substring(2, 10).toUpperCase() + "-" + new Date().getFullYear();
+
+  const licenseDoc: BranchLicenseDocument = {
+    id: licenseId,
+    branchId,
+    branchName: params.name.trim(),
+    licenseKey,
+    packageType: params.license.packageType || "standard",
+    issueDate: issueTs,
+    startDate: startTs,
+    dueDate: dueTs,
+    expiryDate: expiryTs,
+    gracePeriodDays: params.license.gracePeriodDays ?? 14,
+    allowedCurriculums: params.license.allowedCurriculums || ["cur-math-primary-sd"],
+    allowedMaterialTiers: params.license.packageType === "basic" ? ["standard"] : ["standard", "multisensory_kit", "premium"],
+    maxStudents: params.license.maxStudents || 100,
+    maxTeachers: params.license.maxTeachers || 10,
+    status: "active",
+    isActive: true,
+    issuedByUid: params.adminUid,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const batch = db.batch();
+  batch.set(collections.branches().doc(branchId), branchDoc);
+  batch.set(collections.branchLicenses().doc(licenseId), licenseDoc);
+  await batch.commit();
+
+  return { branchId, licenseId };
+}
+
+export async function updateBranchProfile(branchId: string, params: {
+  name?: string;
+  address?: BranchDocument["address"];
+  contact?: BranchDocument["contact"];
+}): Promise<void> {
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+  if (params.name) updateData.name = params.name.trim();
+  if (params.address) updateData.address = params.address;
+  if (params.contact) updateData.contact = params.contact;
+
+  await collections.branches().doc(branchId).update(updateData);
+}
+
+export async function renewBranchLicense(licenseId: string, params: {
+  packageType?: BranchLicenseDocument["packageType"];
+  dueDate?: string;
+  expiryDate?: string;
+  maxStudents?: number;
+  maxTeachers?: number;
+  gracePeriodDays?: number;
+  adminUid: string;
+}): Promise<void> {
+  const licenseRef = collections.branchLicenses().doc(licenseId);
+  const licenseDoc = await licenseRef.get();
+  if (!licenseDoc.exists) {
+    throw new Error("Dokumen lisensi tidak ditemukan.");
+  }
+  const license = licenseDoc.data() as BranchLicenseDocument;
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+    status: "active",
+    isActive: true,
+  };
+
+  if (params.packageType) updateData.packageType = params.packageType;
+  if (params.dueDate) updateData.dueDate = Timestamp.fromDate(new Date(params.dueDate));
+  if (params.expiryDate) updateData.expiryDate = Timestamp.fromDate(new Date(params.expiryDate));
+  if (params.maxStudents) updateData.maxStudents = Number(params.maxStudents);
+  if (params.maxTeachers) updateData.maxTeachers = Number(params.maxTeachers);
+  if (params.gracePeriodDays !== undefined) updateData.gracePeriodDays = Number(params.gracePeriodDays);
+
+  await licenseRef.update(updateData);
+
+  // Sync branch status
+  await collections.branches().doc(license.branchId).update({
+    licenseStatus: "active",
+    updatedAt: Timestamp.now(),
+  });
+}
+

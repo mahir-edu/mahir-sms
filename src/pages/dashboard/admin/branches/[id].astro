@@ -1,0 +1,592 @@
+---
+import { app } from "../../../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getBranch, 
+  getActiveBranchLicense, 
+  getStaffForBranch, 
+  getStudentsForBranch 
+} from "../../../../firebase/firestore";
+import DashboardLayout from "../../../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../../../components/dashboard/DataMetricCard.astro";
+import LicenseStatusBadge from "../../../../components/dashboard/LicenseStatusBadge.astro";
+import type { BranchDocument, BranchLicenseDocument, UserDocument, StudentDocument } from "../../../../types/database";
+
+/* Verify user session & ensure HQ Admin role */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+if (!userProfile || userProfile.role !== "hq_admin") {
+  return Astro.redirect("/dashboard");
+}
+
+const branchId = Astro.params.id;
+if (!branchId) {
+  return Astro.redirect("/dashboard/admin/branches");
+}
+
+const branch = await getBranch(branchId);
+if (!branch) {
+  return Astro.redirect("/dashboard/admin/branches");
+}
+
+const license = await getActiveBranchLicense(branchId);
+const staff = await getStaffForBranch(branchId);
+const students = await getStudentsForBranch(branchId);
+
+// Calculate license days remaining
+const nowTime = Date.now();
+let daysRemaining: number | undefined;
+if (license?.dueDate) {
+  const due = license.dueDate.toDate ? license.dueDate.toDate().getTime() : new Date(license.dueDate).getTime();
+  daysRemaining = Math.max(0, Math.ceil((due - nowTime) / (1000 * 60 * 60 * 24)));
+}
+
+function formatDate(ts: any): string {
+  if (!ts) return "-";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+}
+
+function formatDateShort(ts: any): string {
+  if (!ts) return "-";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+}
+---
+
+<DashboardLayout 
+  title={`${branch.name} | Detail Cabang`} 
+  description="Detail profil unit sekolah pemancar, staf pengajar, siswa, dan lisensi kemitraan"
+  userProfile={userProfile}
+>
+  <DashboardPageHeader 
+    title={branch.name}
+    description={`Kode Unit: ${branch.code} • Kepala Sekolah: ${branch.contact?.headmasterName || "-"}`}
+    breadcrumbs={[
+      { label: "Central HQ Admin" },
+      { label: "Sekolah & Lisensi", href: "/dashboard/admin/branches" },
+      { label: branch.name }
+    ]}
+  >
+    <div slot="actions" class="flex items-center gap-2">
+      <button 
+        type="button" 
+        id="btn-open-edit-branch" 
+        class="btn-outline text-xs py-2! px-3.5! font-bold cursor-pointer"
+      >
+        Edit Profil
+      </button>
+      <button 
+        type="button" 
+        id="btn-open-renew" 
+        class="btn-primary text-xs py-2! px-4! font-bold cursor-pointer flex items-center gap-1.5"
+      >
+        <span>🔄</span>
+        <span>Perpanjang Lisensi</span>
+      </button>
+    </div>
+  </DashboardPageHeader>
+
+  <!-- Metrics Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <!-- Status & Package -->
+    <div class="glass-card p-5 rounded-2xl border-l-4 border-l-purple-500">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Status & Paket</span>
+        <span class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-sm">📜</span>
+      </div>
+      <div class="flex items-center gap-2 mb-1">
+        <LicenseStatusBadge status={branch.licenseStatus || license?.status || "trial"} daysRemaining={daysRemaining} />
+      </div>
+      <div class="text-[11px] font-bold text-purple-800 uppercase tracking-wider mt-2">
+        Paket {license?.packageType || "Standard"}
+      </div>
+    </div>
+
+    <!-- Contract Due Date -->
+    <div class="glass-card p-5 rounded-2xl border-l-4 border-l-amber-500">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Jatuh Tempo Pembayaran</span>
+        <span class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-sm">📅</span>
+      </div>
+      <div class="text-2xl font-extrabold text-slate-900">
+        {formatDateShort(license?.dueDate)}
+      </div>
+      <div class="text-[11px] font-semibold text-amber-700 mt-1">
+        {daysRemaining !== undefined ? `Sisa ${daysRemaining} hari menuju jatuh tempo` : "Belum ditentukan"}
+      </div>
+    </div>
+
+    <!-- Staff Quota Utilization -->
+    <div class="glass-card p-5 rounded-2xl border-l-4 border-l-sky-500">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Kapasitas Staf & Guru</span>
+        <span class="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm">👨‍🏫</span>
+      </div>
+      <div class="text-2xl font-extrabold text-slate-900">
+        {staff.length} <span class="text-sm font-semibold text-slate-400">/ {license?.maxTeachers || 15} Kuota</span>
+      </div>
+      <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
+        <div 
+          class="bg-sky-500 h-1.5 rounded-full" 
+          style={`width: ${Math.min(100, Math.round((staff.length / (license?.maxTeachers || 15)) * 100))}%`}
+        ></div>
+      </div>
+    </div>
+
+    <!-- Student Quota Utilization -->
+    <div class="glass-card p-5 rounded-2xl border-l-4 border-l-emerald-500">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Kapasitas Siswa</span>
+        <span class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">🎓</span>
+      </div>
+      <div class="text-2xl font-extrabold text-slate-900">
+        {students.length} <span class="text-sm font-semibold text-slate-400">/ {license?.maxStudents || 150} Kuota</span>
+      </div>
+      <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
+        <div 
+          class="bg-emerald-500 h-1.5 rounded-full" 
+          style={`width: ${Math.min(100, Math.round((students.length / (license?.maxStudents || 150)) * 100))}%`}
+        ></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Branch Info Overview Card -->
+  <div class="glass-card rounded-2xl p-5 mb-8 border border-slate-200">
+    <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Informasi Operasional Unit Cabang:</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+      <div>
+        <span class="text-slate-400 block text-[11px]">Alamat Sekolah:</span>
+        <span class="font-semibold text-slate-800">{branch.address?.street || "-"}, {branch.address?.city || "-"}, {branch.address?.province || ""}</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[11px]">Kepala Sekolah:</span>
+        <span class="font-semibold text-slate-800">{branch.contact?.headmasterName || "-"}</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[11px]">Email & Telepon:</span>
+        <span class="font-semibold text-slate-800">{branch.contact?.email || "-"} • {branch.contact?.phone || "-"}</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block text-[11px]">Kunci Lisensi (Key):</span>
+        <span class="font-mono text-[11px] font-bold text-purple-700">{license?.licenseKey || "MHR-LIC-AUTO"}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dual Tables Tabs Container -->
+  <div class="space-y-6">
+    <!-- TAB 1: School Staff & Teachers -->
+    <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <span>👨‍🏫 Direktori Staf & Pendidik Cabang</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">
+              {staff.length} Pendidik
+            </span>
+          </h3>
+          <p class="text-xs text-slate-500">Daftar admin unit dan guru aktif yang ditugaskan di cabang ini.</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <input 
+            type="text" 
+            id="search-staff" 
+            placeholder="Cari nama atau email staf..." 
+            class="form-input text-xs py-1.5! sm:w-56"
+          />
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Nama & Kontak</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Peran (Role)</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">NIP & Spesialisasi</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status Akun</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 bg-white" id="staff-table-body">
+            {staff.length === 0 ? (
+              <tr>
+                <td colspan="4" class="py-10 text-center text-slate-400">
+                  <div class="text-2xl mb-1">👨‍🏫</div>
+                  <p class="font-bold text-slate-700">Belum Ada Staf / Guru Terdaftar</p>
+                  <p class="text-[11px] mt-0.5">Tugaskan guru dari menu Manajemen Pengguna.</p>
+                </td>
+              </tr>
+            ) : (
+              staff.map(s => (
+                <tr class="staff-row hover:bg-slate-50/80 transition-colors" data-query={`${s.displayName} ${s.email}`.toLowerCase()}>
+                  <td class="py-3.5 px-4">
+                    <div class="font-bold text-slate-900">{s.displayName}</div>
+                    <div class="text-[11px] text-slate-500">{s.email}</div>
+                    {s.phoneNumber && <div class="text-[10px] text-slate-400">WA: {s.phoneNumber}</div>}
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      s.role === "branch_admin" ? "bg-purple-100 text-purple-800" : "bg-sky-100 text-sky-800"
+                    }`}>
+                      {s.role === "branch_admin" ? "Admin Cabang" : "Guru"}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-600">
+                    <div>{s.teacherMetadata?.specialization || "Matematika Multisensori"}</div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">NIP: {s.teacherMetadata?.nip || "-"}</div>
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      s.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      {s.status === "active" ? "Aktif" : s.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: Enrolled Students & Status -->
+    <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white">
+        <div>
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <span>🎓 Data Siswa Terdaftar & Status Akademik</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              {students.length} Siswa
+            </span>
+          </h3>
+          <p class="text-xs text-slate-500">Roster siswa aktif, kelas/rombel, dan relasi akun wali murid.</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <input 
+            type="text" 
+            id="search-student" 
+            placeholder="Cari NIS atau nama siswa..." 
+            class="form-input text-xs py-1.5! sm:w-56"
+          />
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">NIS & NISN</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Nama Lengkap Siswa</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Kelas / Rombel</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Email Wali Murid</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Status</th>
+              <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Terdaftar Sejak</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 bg-white" id="students-table-body">
+            {students.length === 0 ? (
+              <tr>
+                <td colspan="6" class="py-12 text-center text-slate-400">
+                  <div class="text-3xl mb-1">🎓</div>
+                  <p class="font-bold text-slate-700">Belum Ada Siswa Terdaftar di Cabang Ini</p>
+                  <p class="text-[11px] mt-0.5">Gunakan fitur Import Siswa & Wali pada menu Manajemen Pengguna untuk memasukkan data sekaligus.</p>
+                </td>
+              </tr>
+            ) : (
+              students.map(st => (
+                <tr class="student-row hover:bg-slate-50/80 transition-colors" data-query={`${st.nis} ${st.fullName}`.toLowerCase()}>
+                  <td class="py-3.5 px-4 font-mono font-semibold text-slate-700">
+                    <div>{st.nis}</div>
+                    {st.nisn && <div class="text-[10px] text-slate-400 font-normal">NISN: {st.nisn}</div>}
+                  </td>
+                  <td class="py-3.5 px-4 font-bold text-slate-900">
+                    <div class="flex items-center gap-2">
+                      <span>{st.fullName}</span>
+                      <span class={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                        st.gender === "female" ? "bg-rose-100 text-rose-700" : "bg-sky-100 text-sky-700"
+                      }`}>
+                        {st.gender === "female" ? "P" : "L"}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-700">
+                    {st.currentClassId || "-"}
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-600 font-mono text-[11px]">
+                    {st.primaryParentEmail || "-"}
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      st.status === "active" 
+                        ? "bg-emerald-100 text-emerald-800" 
+                        : st.status === "graduated"
+                        ? "bg-purple-100 text-purple-800"
+                        : "bg-slate-100 text-slate-700"
+                    }`}>
+                      <span class={`w-1.5 h-1.5 rounded-full ${st.status === "active" ? "bg-emerald-500" : "bg-slate-400"}`}></span>
+                      {st.status === "active" ? "Aktif" : st.status === "graduated" ? "Lulus" : st.status}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-500 text-[11px]">
+                    {formatDateShort(st.enrolledAt)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 1: Edit Branch Profile Modal -->
+  <div id="modal-edit-branch" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div id="edit-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"></div>
+    <div class="min-h-full flex items-center justify-center p-4">
+      <div class="relative bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 z-10">
+        <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+          <h3 class="text-base font-bold text-slate-900">Edit Profil Cabang</h3>
+          <button id="btn-close-edit" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer">✕</button>
+        </div>
+
+        <form id="form-edit-branch" class="space-y-3">
+          <input type="hidden" name="branchId" value={branch.id} />
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Sekolah / Unit</label>
+            <input type="text" name="name" value={branch.name} required class="form-input text-xs py-2!" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Kepala Sekolah</label>
+            <input type="text" name="headmasterName" value={branch.contact?.headmasterName || ""} class="form-input text-xs py-2!" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Email Sekolah</label>
+              <input type="email" name="email" value={branch.contact?.email || ""} class="form-input text-xs py-2!" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Telepon / WA</label>
+              <input type="text" name="phone" value={branch.contact?.phone || ""} class="form-input text-xs py-2!" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Alamat Jalan</label>
+            <input type="text" name="street" value={branch.address?.street || ""} class="form-input text-xs py-2!" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Kota / Kabupaten</label>
+              <input type="text" name="city" value={branch.address?.city || ""} class="form-input text-xs py-2!" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Provinsi</label>
+              <input type="text" name="province" value={branch.address?.province || ""} class="form-input text-xs py-2!" />
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button type="button" id="btn-cancel-edit" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
+            <button type="submit" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer">Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Renew / Extend License Modal -->
+  <div id="modal-renew-license" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div id="renew-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"></div>
+    <div class="min-h-full flex items-center justify-center p-4">
+      <div class="relative bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 z-10">
+        <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Perpanjang / Kelola Lisensi</h3>
+            <p class="text-xs text-slate-500">Perbarui jatuh tempo pembayaran atau ubah paket tier lisensi.</p>
+          </div>
+          <button id="btn-close-renew" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer">✕</button>
+        </div>
+
+        <form id="form-renew-license" class="space-y-3">
+          <input type="hidden" name="licenseId" value={license?.id || branch.activeLicenseId || ""} />
+          
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Paket Lisensi</label>
+            <select name="packageType" class="form-input text-xs py-2!">
+              <option value="standard" selected={license?.packageType === "standard"}>Paket Standard</option>
+              <option value="basic" selected={license?.packageType === "basic"}>Paket Basic</option>
+              <option value="premium" selected={license?.packageType === "premium"}>Paket Premium (Multisensory Kit)</option>
+              <option value="enterprise" selected={license?.packageType === "enterprise"}>Paket Enterprise</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Jatuh Tempo Baru</label>
+              <input type="date" name="dueDate" required class="form-input text-xs py-2!" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Kedaluwarsa Baru</label>
+              <input type="date" name="expiryDate" required class="form-input text-xs py-2!" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Guru</label>
+              <input type="number" name="maxTeachers" value={license?.maxTeachers || 15} min="1" class="form-input text-xs py-2!" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Siswa</label>
+              <input type="number" name="maxStudents" value={license?.maxStudents || 150} min="1" class="form-input text-xs py-2!" />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button type="button" id="btn-cancel-renew" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
+            <button type="submit" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer">Simpan Perpanjangan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</DashboardLayout>
+
+<script>
+  // Search Filters for Staff & Students
+  const searchStaff = document.getElementById("search-staff") as HTMLInputElement | null;
+  const staffRows = document.querySelectorAll<HTMLTableRowElement>(".staff-row");
+  searchStaff?.addEventListener("input", () => {
+    const q = searchStaff.value.toLowerCase().trim();
+    staffRows.forEach(r => {
+      const query = r.dataset.query || "";
+      r.style.display = !q || query.includes(q) ? "" : "none";
+    });
+  });
+
+  const searchStudent = document.getElementById("search-student") as HTMLInputElement | null;
+  const studentRows = document.querySelectorAll<HTMLTableRowElement>(".student-row");
+  searchStudent?.addEventListener("input", () => {
+    const q = searchStudent.value.toLowerCase().trim();
+    studentRows.forEach(r => {
+      const query = r.dataset.query || "";
+      r.style.display = !q || query.includes(q) ? "" : "none";
+    });
+  });
+
+  // Modal 1: Edit Branch Profile Controls
+  const modalEdit = document.getElementById("modal-edit-branch");
+  const btnOpenEdit = document.getElementById("btn-open-edit-branch");
+  const btnCloseEdit = document.getElementById("btn-close-edit");
+  const btnCancelEdit = document.getElementById("btn-cancel-edit");
+  const editBackdrop = document.getElementById("edit-backdrop");
+  const formEdit = document.getElementById("form-edit-branch") as HTMLFormElement | null;
+
+  btnOpenEdit?.addEventListener("click", () => modalEdit?.classList.remove("hidden"));
+  btnCloseEdit?.addEventListener("click", () => modalEdit?.classList.add("hidden"));
+  btnCancelEdit?.addEventListener("click", () => modalEdit?.classList.add("hidden"));
+  editBackdrop?.addEventListener("click", () => modalEdit?.classList.add("hidden"));
+
+  formEdit?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(formEdit);
+    const payload = {
+      branchId: fd.get("branchId")?.toString(),
+      name: fd.get("name")?.toString(),
+      address: {
+        street: fd.get("street")?.toString() || "",
+        city: fd.get("city")?.toString() || "",
+        province: fd.get("province")?.toString() || "",
+      },
+      contact: {
+        headmasterName: fd.get("headmasterName")?.toString() || "",
+        email: fd.get("email")?.toString() || "",
+        phone: fd.get("phone")?.toString() || "",
+      },
+    };
+
+    try {
+      const res = await fetch("/api/admin/branches/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan perubahan.");
+      alert(data.message || "Profil cabang berhasil diperbarui!");
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || "Terjadi kesalahan.");
+    }
+  });
+
+  // Modal 2: Renew License Controls
+  const modalRenew = document.getElementById("modal-renew-license");
+  const btnOpenRenew = document.getElementById("btn-open-renew");
+  const btnCloseRenew = document.getElementById("btn-close-renew");
+  const btnCancelRenew = document.getElementById("btn-cancel-renew");
+  const renewBackdrop = document.getElementById("renew-backdrop");
+  const formRenew = document.getElementById("form-renew-license") as HTMLFormElement | null;
+
+  btnOpenRenew?.addEventListener("click", () => modalRenew?.classList.remove("hidden"));
+  btnCloseRenew?.addEventListener("click", () => modalRenew?.classList.add("hidden"));
+  btnCancelRenew?.addEventListener("click", () => modalRenew?.classList.add("hidden"));
+  renewBackdrop?.addEventListener("click", () => modalRenew?.classList.add("hidden"));
+
+  formRenew?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(formRenew);
+    const payload = {
+      licenseId: fd.get("licenseId")?.toString(),
+      packageType: fd.get("packageType")?.toString(),
+      dueDate: fd.get("dueDate")?.toString(),
+      expiryDate: fd.get("expiryDate")?.toString(),
+      maxTeachers: Number(fd.get("maxTeachers")),
+      maxStudents: Number(fd.get("maxStudents")),
+    };
+
+    try {
+      const res = await fetch("/api/admin/branches/renew-license", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memperpanjang lisensi.");
+      alert(data.message || "Lisensi cabang berhasil diperpanjang!");
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || "Terjadi kesalahan.");
+    }
+  });
+</script>
