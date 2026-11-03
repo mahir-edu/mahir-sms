@@ -1,0 +1,642 @@
+---
+import { app } from "../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getBranch, 
+  getActiveBranchLicense,
+  getLinkedStudentsForParent 
+} from "../../firebase/firestore";
+import type { StudentDocument, UserRole } from "../../types/database";
+import DashboardLayout from "../../layouts/DashboardLayout.astro";
+import "../../styles/global.css";
+
+const auth = getAuth(app);
+
+// 1. Session & Auth Verification
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+// 2. Fetch User Profile & Status
+const userProfile = await getUserProfile(user.uid);
+if (userProfile && userProfile.status === "pending_approval") {
+  return Astro.redirect("/pending-approval");
+}
+
+const role: UserRole = userProfile?.role || "teacher";
+const activeBranch = userProfile?.branchId ? await getBranch(userProfile.branchId) : null;
+const activeLicense = userProfile?.branchId ? await getActiveBranchLicense(userProfile.branchId) : null;
+
+// Parent linked children
+let linkedStudents: StudentDocument[] = [];
+if (role === "parent") {
+  linkedStudents = await getLinkedStudentsForParent(user.uid);
+}
+
+const roleLabels: Record<UserRole, string> = {
+  hq_admin: "Central HQ Administrator",
+  branch_admin: "Admin Sekolah Pemancar",
+  teacher: "Pendidik / Guru",
+  parent: "Orang Tua / Wali Murid",
+  student: "Siswa",
+};
+
+const rolePills: Record<UserRole, string> = {
+  hq_admin: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  branch_admin: "bg-purple-100 text-purple-800 border-purple-300",
+  teacher: "bg-sky-100 text-sky-800 border-sky-300",
+  parent: "bg-amber-100 text-amber-800 border-amber-300",
+  student: "bg-lime-100 text-lime-800 border-lime-300",
+};
+
+function formatDateIndo(ts: any): string {
+  if (!ts) return "-";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+---
+
+<DashboardLayout 
+  title="Profil & Pengaturan Akun" 
+  description="Kelola informasi pribadi, kontak, dan keamanan akun Anda."
+  userProfile={userProfile}
+  activeBranch={activeBranch}
+  activeLicense={activeLicense}
+>
+  <div class="space-y-6 max-w-5xl mx-auto">
+    
+    <!-- Hero Identity Card -->
+    <div class="glass-card rounded-2xl p-6 sm:p-8 border border-slate-200/80 shadow-xs relative overflow-hidden">
+      <div class="absolute -top-12 -right-12 w-48 h-48 bg-linear-to-bl from-emerald-100/50 via-purple-100/40 to-transparent rounded-full pointer-events-none"></div>
+
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
+        <div class="flex items-center gap-4 sm:gap-5">
+          <!-- Avatar Icon with Initials -->
+          <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-tr from-emerald-500 via-[#5C6096] to-[#B4CD4B] text-white flex items-center justify-center font-extrabold text-2xl sm:text-3xl shadow-md uppercase shrink-0">
+            {(userProfile?.displayName || user.displayName || "U")[0]}
+          </div>
+
+          <div>
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+              <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">
+                {userProfile?.displayName || user.displayName || "Pengguna Mahir"}
+              </h1>
+              <span class={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${rolePills[role]}`}>
+                {roleLabels[role]}
+              </span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs text-slate-500">
+              <span class="flex items-center gap-1 font-mono text-slate-600">
+                <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                {userProfile?.email || user.email}
+              </span>
+              <span>&bull;</span>
+              <span>
+                Unit: <strong class="text-slate-700">{role === "hq_admin" ? "Kantor Pusat (HQ)" : activeBranch ? `${activeBranch.name} (${activeBranch.code})` : "Mahir Edu"}</strong>
+              </span>
+              <span>&bull;</span>
+              <span>
+                Bergabung: <strong class="text-slate-700">{formatDateIndo(userProfile?.createdAt)}</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Badge -->
+        <div class="shrink-0 flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Akun Aktif
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Grid: 2 Columns on Large Screens -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Left Column: Edit Biodata Form (2 Cols) -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Biodata Card -->
+        <div class="glass-card rounded-2xl p-6 sm:p-7 border border-slate-200">
+          <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+            <div>
+              <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>📝 Informasi Profil & Kontak</span>
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Perbarui nama lengkap, nomor telepon, dan data profil Anda.
+              </p>
+            </div>
+          </div>
+
+          <!-- Alert Notification -->
+          <div id="profile-alert" class="hidden mb-4 p-3.5 rounded-xl text-xs font-semibold"></div>
+
+          <form id="form-update-profile" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Full Name -->
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">
+                  Nama Lengkap <span class="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  name="displayName" 
+                  id="profile-name" 
+                  value={userProfile?.displayName || user.displayName || ""} 
+                  required 
+                  class="form-input text-xs py-2!"
+                />
+              </div>
+
+              <!-- Phone Number / WhatsApp -->
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">
+                  Nomor WhatsApp / HP
+                </label>
+                <input 
+                  type="text" 
+                  name="phoneNumber" 
+                  id="profile-phone" 
+                  value={userProfile?.phoneNumber || user.phoneNumber || ""} 
+                  placeholder="081234567890" 
+                  class="form-input text-xs py-2!"
+                />
+              </div>
+            </div>
+
+            <!-- Email (Read-Only) -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-bold text-slate-700">Alamat Email</label>
+                <span class="text-[10px] text-slate-400 font-semibold">Tidak dapat diubah sendiri</span>
+              </div>
+              <input 
+                type="email" 
+                value={userProfile?.email || user.email || ""} 
+                disabled 
+                class="form-input text-xs py-2! bg-slate-50 text-slate-500 cursor-not-allowed border-slate-200"
+              />
+              <p class="text-[10px] text-slate-400 mt-1">
+                Alamat email terhubung dengan kredensial autentikasi. Hubungi Central Admin untuk pengubahan email.
+              </p>
+            </div>
+
+            <!-- Unit & Role (Read-Only) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Peran Akun (Role)</label>
+                <input 
+                  type="text" 
+                  value={roleLabels[role]} 
+                  disabled 
+                  class="form-input text-xs py-2! bg-slate-50 text-slate-600 font-bold cursor-not-allowed border-slate-200"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Unit Sekolah / Pemancar</label>
+                <input 
+                  type="text" 
+                  value={role === "hq_admin" ? "Kantor Pusat (HQ)" : activeBranch ? `${activeBranch.name} (${activeBranch.code})` : "Mahir Edu Community"} 
+                  disabled 
+                  class="form-input text-xs py-2! bg-slate-50 text-slate-600 font-bold cursor-not-allowed border-slate-200"
+                />
+              </div>
+            </div>
+
+            <!-- Teacher Specific Fields -->
+            {role === "teacher" && (
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 mt-2">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-700">Data Pendidik:</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor Induk Pegawai (NIP)</label>
+                    <input 
+                      type="text" 
+                      name="nip" 
+                      id="profile-nip" 
+                      value={userProfile?.teacherMetadata?.nip || ""} 
+                      placeholder="Opsional" 
+                      class="form-input text-xs py-1.5!" 
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-bold text-slate-600 mb-1">Spesialisasi Ajar</label>
+                    <input 
+                      type="text" 
+                      name="specialization" 
+                      id="profile-spec" 
+                      value={userProfile?.teacherMetadata?.specialization || "Matematika Multisensori"} 
+                      class="form-input text-xs py-1.5!" 
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <!-- Parent Notification Preferences -->
+            {role === "parent" && (
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 mt-2">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-700">Preferensi Notifikasi Email:</div>
+                <div class="space-y-1.5 text-xs text-slate-700">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="pref-attendance" checked class="w-4 h-4 text-emerald-600 rounded" />
+                    <span>Terima notifikasi email saat ada ketidakhadiran (Alpa/Sakit)</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="pref-grades" checked class="w-4 h-4 text-emerald-600 rounded" />
+                    <span>Terima notifikasi email saat Rapor Evaluasi 5-Pilar diterbitkan</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="pref-announcements" checked class="w-4 h-4 text-emerald-600 rounded" />
+                    <span>Terima pengumuman kegiatan sekolah & undangan webinar</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <!-- Action Button -->
+            <div class="flex items-center justify-end pt-3 border-t border-slate-100">
+              <button 
+                type="submit" 
+                id="btn-submit-profile" 
+                class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer inline-flex items-center gap-2"
+              >
+                <svg id="profile-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span id="profile-btn-text">Simpan Perubahan</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Security / Change Password Card -->
+        <div class="glass-card rounded-2xl p-6 sm:p-7 border border-slate-200">
+          <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+            <div>
+              <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <span>🔐 Keamanan Akun & Kata Sandi</span>
+              </h2>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Perbarui kata sandi login Anda secara berkala untuk menjaga keamanan akun.
+              </p>
+            </div>
+          </div>
+
+          <!-- Alert Notification -->
+          <div id="password-alert" class="hidden mb-4 p-3.5 rounded-xl text-xs font-semibold"></div>
+
+          <form id="form-change-password" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">
+                  Kata Sandi Baru <span class="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="password" 
+                  name="newPassword" 
+                  id="pw-new" 
+                  required 
+                  minlength="6" 
+                  placeholder="Minimal 6 karakter" 
+                  class="form-input text-xs py-2!"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">
+                  Konfirmasi Kata Sandi Baru <span class="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="password" 
+                  name="confirmPassword" 
+                  id="pw-confirm" 
+                  required 
+                  minlength="6" 
+                  placeholder="Ulangi kata sandi baru" 
+                  class="form-input text-xs py-2!"
+                />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-end pt-3 border-t border-slate-100">
+              <button 
+                type="submit" 
+                id="btn-submit-password" 
+                class="px-5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer inline-flex items-center gap-2"
+              >
+                <svg id="password-spinner" class="hidden animate-spin h-3.5 w-3.5 text-slate-700" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span id="password-btn-text">Perbarui Kata Sandi</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Role Context Card (1 Col) -->
+      <div class="space-y-6">
+        
+        {/* Parent Linked Children Overview */}
+        {role === "parent" && (
+          <div class="glass-card rounded-2xl p-6 border border-slate-200">
+            <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                👨‍👩‍👦 Ananda Terdaftar ({linkedStudents.length})
+              </h3>
+            </div>
+
+            {linkedStudents.length === 0 ? (
+              <div class="text-center py-6">
+                <div class="text-3xl mb-2">🌱</div>
+                <div class="text-xs font-bold text-slate-800">Belum Ada Siswa Terhubung</div>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Akun Anda berstatus Prospek / Wali Baru. Hubungkan NIS ananda melalui tombol di bawah.
+                </p>
+                <a 
+                  href="/dashboard" 
+                  class="mt-3 inline-block px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 no-underline"
+                >
+                  Hubungkan NIS Ananda &rarr;
+                </a>
+              </div>
+            ) : (
+              <div class="space-y-3">
+                {linkedStudents.map(st => (
+                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="font-bold text-xs text-slate-900">{st.fullName}</span>
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">
+                        {st.status === "active" ? "Aktif" : st.status}
+                      </span>
+                    </div>
+                    <div class="text-[11px] text-slate-500 font-mono">
+                      NIS: {st.nis} &bull; {st.currentClassId || "Belum ada kelas"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Teacher Assignments Overview */}
+        {role === "teacher" && (
+          <div class="glass-card rounded-2xl p-6 border border-slate-200">
+            <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                👨‍🏫 Penugasan Pendidik
+              </h3>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-500 font-semibold">Spesialisasi:</span>
+                <span class="font-bold text-slate-800">{userProfile?.teacherMetadata?.specialization || "Matematika Multisensori"}</span>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-500 font-semibold">NIP:</span>
+                <span class="font-mono text-slate-800">{userProfile?.teacherMetadata?.nip || "-"}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500 font-semibold">Unit Sekolah:</span>
+                <span class="font-bold text-emerald-800">{activeBranch?.name || "Pusat"}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Branch Admin Overview */}
+        {role === "branch_admin" && activeBranch && (
+          <div class="glass-card rounded-2xl p-6 border border-slate-200">
+            <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                🏫 Informasi Cabang
+              </h3>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-500 font-semibold">Nama Sekolah:</span>
+                <span class="font-bold text-slate-800">{activeBranch.name}</span>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-500 font-semibold">Kode Unit:</span>
+                <span class="font-mono text-slate-800">{activeBranch.code}</span>
+              </div>
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span class="text-slate-500 font-semibold">Kota:</span>
+                <span class="text-slate-800">{activeBranch.address?.city || "-"}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500 font-semibold">Status Lisensi:</span>
+                <span class="font-bold text-emerald-800 uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {activeLicense?.packageType || "Standard"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Central HQ Admin Privileges Overview */}
+        {role === "hq_admin" && (
+          <div class="glass-card rounded-2xl p-6 border border-emerald-200 bg-emerald-50/40">
+            <div class="flex items-center gap-2 text-emerald-800 font-bold text-xs uppercase tracking-wider mb-2">
+              <span>🛡️ Otoritas Central Admin</span>
+            </div>
+            <p class="text-xs text-emerald-900 leading-relaxed">
+              Akun ini memiliki hak akses tertinggi (Super Admin) untuk mengelola seluruh Sekolah Pemancar, lisensi waralaba, kurikulum nasional, dan data pengguna secara nasional.
+            </p>
+          </div>
+        )}
+
+        {/* Help & Support Card */}
+        <div class="glass-card rounded-2xl p-6 border border-slate-200 text-xs space-y-2">
+          <div class="font-bold text-slate-800 flex items-center gap-1.5">
+            <span>💡 Butuh Bantuan Akun?</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed text-[11px]">
+            Jika Anda mengalami kendala terkait perubahan email atau hak akses peran, silakan hubungi tim IT Administrator melalui <a href="mailto:admin@mahir-edu.com" class="text-brand-indigo font-bold hover:underline">admin@mahir-edu.com</a>.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</DashboardLayout>
+
+<script>
+  // 1. Profile Update Form Handler
+  const formProfile = document.getElementById("form-update-profile") as HTMLFormElement | null;
+  const profileAlert = document.getElementById("profile-alert");
+  const btnSubmitProfile = document.getElementById("btn-submit-profile") as HTMLButtonElement | null;
+  const profileSpinner = document.getElementById("profile-spinner");
+  const profileBtnText = document.getElementById("profile-btn-text");
+
+  formProfile?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!formProfile) return;
+
+    const fd = new FormData(formProfile);
+    const displayName = fd.get("displayName")?.toString()?.trim();
+    const phoneNumber = fd.get("phoneNumber")?.toString()?.trim() || "";
+    const nip = fd.get("nip")?.toString()?.trim();
+    const specialization = fd.get("specialization")?.toString()?.trim();
+
+    const prefAttendance = (document.getElementById("pref-attendance") as HTMLInputElement | null)?.checked;
+    const prefGrades = (document.getElementById("pref-grades") as HTMLInputElement | null)?.checked;
+    const prefAnnouncements = (document.getElementById("pref-announcements") as HTMLInputElement | null)?.checked;
+
+    const payload: Record<string, any> = {
+      displayName,
+      phoneNumber,
+    };
+
+    if (nip !== undefined || specialization !== undefined) {
+      payload.teacherMetadata = { nip, specialization };
+    }
+
+    if (prefAttendance !== undefined) {
+      payload.emailPreferences = {
+        attendanceAlerts: prefAttendance,
+        gradeAnnouncements: prefGrades,
+        generalAnnouncements: prefAnnouncements,
+      };
+    }
+
+    if (btnSubmitProfile) btnSubmitProfile.disabled = true;
+    if (profileSpinner) profileSpinner.classList.remove("hidden");
+    if (profileBtnText) profileBtnText.textContent = "Menyimpan...";
+    if (profileAlert) profileAlert.classList.add("hidden");
+
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memperbarui profil.");
+
+      if (profileAlert) {
+        profileAlert.textContent = data.message || "Profil berhasil diperbarui!";
+        profileAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800";
+        profileAlert.classList.remove("hidden");
+      }
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+
+    } catch (err: any) {
+      if (profileAlert) {
+        profileAlert.textContent = err.message || "Terjadi kesalahan.";
+        profileAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        profileAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmitProfile) btnSubmitProfile.disabled = false;
+      if (profileSpinner) profileSpinner.classList.add("hidden");
+      if (profileBtnText) profileBtnText.textContent = "Simpan Perubahan";
+    }
+  });
+
+  // 2. Change Password Form Handler
+  const formPassword = document.getElementById("form-change-password") as HTMLFormElement | null;
+  const passwordAlert = document.getElementById("password-alert");
+  const btnSubmitPassword = document.getElementById("btn-submit-password") as HTMLButtonElement | null;
+  const passwordSpinner = document.getElementById("password-spinner");
+  const passwordBtnText = document.getElementById("password-btn-text");
+
+  formPassword?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!formPassword) return;
+
+    const fd = new FormData(formPassword);
+    const newPassword = fd.get("newPassword")?.toString();
+    const confirmPassword = fd.get("confirmPassword")?.toString();
+
+    if (!newPassword || newPassword.length < 6) {
+      if (passwordAlert) {
+        passwordAlert.textContent = "Kata sandi baru minimal 6 karakter.";
+        passwordAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        passwordAlert.classList.remove("hidden");
+      }
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      if (passwordAlert) {
+        passwordAlert.textContent = "Konfirmasi kata sandi baru tidak cocok.";
+        passwordAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        passwordAlert.classList.remove("hidden");
+      }
+      return;
+    }
+
+    if (btnSubmitPassword) btnSubmitPassword.disabled = true;
+    if (passwordSpinner) passwordSpinner.classList.remove("hidden");
+    if (passwordBtnText) passwordBtnText.textContent = "Memperbarui...";
+    if (passwordAlert) passwordAlert.classList.add("hidden");
+
+    try {
+      const res = await fetch("/api/user/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword, confirmPassword }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal mengubah kata sandi.");
+
+      if (passwordAlert) {
+        passwordAlert.textContent = data.message || "Kata sandi berhasil diperbarui!";
+        passwordAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800";
+        passwordAlert.classList.remove("hidden");
+      }
+
+      formPassword.reset();
+
+    } catch (err: any) {
+      if (passwordAlert) {
+        passwordAlert.textContent = err.message || "Terjadi kesalahan.";
+        passwordAlert.className = "mb-4 p-3.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        passwordAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmitPassword) btnSubmitPassword.disabled = false;
+      if (passwordSpinner) passwordSpinner.classList.add("hidden");
+      if (passwordBtnText) passwordBtnText.textContent = "Perbarui Kata Sandi";
+    }
+  });
+</script>

@@ -14,9 +14,18 @@ export interface NavSection {
 }
 
 export function getNavigationForRole(role: UserRole): NavSection[] {
+  const accountSection: NavSection = {
+    title: "Akun Saya",
+    items: [
+      { label: "Profil & Akun", href: "/dashboard/profile", icon: "👤", exact: true },
+    ],
+  };
+
+  let sections: NavSection[] = [];
+
   switch (role) {
     case "hq_admin":
-      return [
+      sections = [
         {
           title: "Utama",
           items: [
@@ -44,9 +53,10 @@ export function getNavigationForRole(role: UserRole): NavSection[] {
           ],
         },
       ];
+      break;
 
     case "branch_admin":
-      return [
+      sections = [
         {
           title: "Utama",
           items: [
@@ -68,9 +78,10 @@ export function getNavigationForRole(role: UserRole): NavSection[] {
           ],
         },
       ];
+      break;
 
     case "teacher":
-      return [
+      sections = [
         {
           title: "Utama",
           items: [
@@ -93,9 +104,10 @@ export function getNavigationForRole(role: UserRole): NavSection[] {
           ],
         },
       ];
+      break;
 
     case "parent":
-      return [
+      sections = [
         {
           title: "Utama",
           items: [
@@ -116,14 +128,19 @@ export function getNavigationForRole(role: UserRole): NavSection[] {
           ],
         },
       ];
+      break;
 
     default:
-      return [
+      sections = [
         {
           items: [
             { label: "Dashboard", href: "/dashboard", icon: "📊", exact: true },
           ],
         },
       ];
+      break;
   }
+
+  sections.push(accountSection);
+  return sections;
 }

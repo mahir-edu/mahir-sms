@@ -131,12 +131,12 @@ const isItemActive = (href: string, exact?: boolean) => {
 
         <!-- Sidebar Footer / User Quick Info -->
         <div class="p-4 border-t border-slate-100 bg-slate-50/70">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-full bg-linear-to-tr from-emerald-500 to-[#5C6096] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0">
+          <a href="/dashboard/profile" class="flex items-center gap-3 p-2 -m-2 rounded-xl hover:bg-slate-200/60 transition-colors no-underline group" title="Buka Profil & Pengaturan Akun">
+            <div class="w-9 h-9 rounded-full bg-linear-to-tr from-emerald-500 to-[#5C6096] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0 group-hover:scale-105 transition-transform">
               {(userProfile?.displayName || "U")[0]}
             </div>
             <div class="flex-1 min-w-0">
-              <div class="text-xs font-bold text-slate-900 truncate">
+              <div class="text-xs font-bold text-slate-900 truncate group-hover:text-emerald-700 transition-colors">
                 {userProfile?.displayName || "Pengguna"}
               </div>
               <div class="flex items-center gap-1.5 mt-0.5">
@@ -145,7 +145,7 @@ const isItemActive = (href: string, exact?: boolean) => {
                 </span>
               </div>
             </div>
-          </div>
+          </a>
         </div>
       </aside>
 
@@ -238,7 +238,21 @@ const isItemActive = (href: string, exact?: boolean) => {
           </div>
 
           <!-- Right: Profile & Actions -->
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2.5">
+            <!-- Profile Shortcut -->
+            <a
+              href="/dashboard/profile"
+              class={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors no-underline ${
+                currentPath === "/dashboard/profile"
+                  ? "bg-emerald-500 text-white shadow-xs"
+                  : "text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200"
+              }`}
+              title="Profil & Pengaturan Akun"
+            >
+              <span>👤</span>
+              <span class="hidden sm:inline">Profil Saya</span>
+            </a>
+
             <!-- Public Website Shortcut -->
             <a
               href="/"

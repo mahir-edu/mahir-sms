@@ -111,6 +111,65 @@ export async function upsertUserProfile(user: Partial<UserDocument> & { uid: str
   );
 }
 
+export async function updateUserSelfProfile(uid: string, params: {
+  displayName?: string;
+  phoneNumber?: string;
+  teacherMetadata?: {
+    nip?: string;
+    specialization?: string;
+  };
+  emailPreferences?: {
+    attendanceAlerts?: boolean;
+    gradeAnnouncements?: boolean;
+    generalAnnouncements?: boolean;
+  };
+}): Promise<void> {
+  const userRef = collections.users().doc(uid);
+  const now = Timestamp.now();
+  const updateData: Record<string, any> = {
+    updatedAt: now,
+  };
+
+  if (params.displayName) updateData.displayName = params.displayName.trim();
+  if (params.phoneNumber !== undefined) updateData.phoneNumber = params.phoneNumber.trim();
+  if (params.teacherMetadata) {
+    if (params.teacherMetadata.nip !== undefined) updateData["teacherMetadata.nip"] = params.teacherMetadata.nip.trim();
+    if (params.teacherMetadata.specialization !== undefined) updateData["teacherMetadata.specialization"] = params.teacherMetadata.specialization.trim();
+  }
+
+  await userRef.update(updateData);
+
+  // Sync teachers collection if applicable
+  if (params.displayName || params.teacherMetadata) {
+    try {
+      const teacherDoc = await collections.teachers().doc(uid).get();
+      if (teacherDoc.exists) {
+        const teacherUpdate: Record<string, any> = {};
+        if (params.displayName) teacherUpdate.fullName = params.displayName.trim();
+        if (params.teacherMetadata?.nip !== undefined) teacherUpdate.nip = params.teacherMetadata.nip.trim();
+        if (params.teacherMetadata?.specialization !== undefined) {
+          teacherUpdate.specializations = [params.teacherMetadata.specialization.trim()];
+        }
+        await collections.teachers().doc(uid).update(teacherUpdate);
+      }
+    } catch {}
+  }
+
+  // Sync parents collection if applicable
+  if (params.displayName || params.phoneNumber || params.emailPreferences) {
+    try {
+      const parentDoc = await collections.parents().doc(uid).get();
+      if (parentDoc.exists) {
+        const parentUpdate: Record<string, any> = {};
+        if (params.displayName) parentUpdate.fullName = params.displayName.trim();
+        if (params.phoneNumber !== undefined) parentUpdate.phone = params.phoneNumber.trim();
+        if (params.emailPreferences) parentUpdate.emailPreferences = params.emailPreferences;
+        await collections.parents().doc(uid).update(parentUpdate);
+      }
+    } catch {}
+  }
+}
+
 // ==========================================
 // 2. Branch & License Helpers
 // ==========================================
