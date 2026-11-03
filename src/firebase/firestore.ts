@@ -318,6 +318,7 @@ export async function queueEmailNotification(params: {
   metadata?: EmailQueueDocument["metadata"];
 }): Promise<string> {
   const ref = collections.emailQueue().doc();
+  const now = Timestamp.now();
   const emailDoc: EmailQueueDocument = {
     id: ref.id,
     to: params.to,
@@ -331,10 +332,42 @@ export async function queueEmailNotification(params: {
       state: "PENDING",
       attempts: 0,
     },
-    createdAt: Timestamp.now(),
+    createdAt: now,
   };
 
   await ref.set(emailDoc);
+
+  // If SMTP is configured, attempt immediate background dispatch
+  try {
+    const { isSmtpConfigured, sendMailDirect } = await import("../services/mailer");
+    if (isSmtpConfigured()) {
+      sendMailDirect({
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: params.text || "",
+      }).then(async (res) => {
+        const finishTs = Timestamp.now();
+        if (res.success) {
+          await ref.update({
+            "delivery.state": "SUCCESS",
+            "delivery.endTime": finishTs,
+            "delivery.attempts": 1,
+          });
+        } else {
+          await ref.update({
+            "delivery.state": "ERROR",
+            "delivery.endTime": finishTs,
+            "delivery.attempts": 1,
+            "delivery.error": res.error || "Gagal mengirim email via SMTP.",
+          });
+        }
+      }).catch((err) => {
+        console.warn("[Mailer] Background send error:", err?.message);
+      });
+    }
+  } catch {}
+
   return ref.id;
 }
 

@@ -11,6 +11,7 @@
     "preview": "astro preview",
     "start": "node ./dist/server/entry.mjs",
     "seed": "node scripts/seed-db.mjs",
+    "process-email-queue": "node scripts/process-email-queue.mjs",
     "astro": "astro"
   },
   "dependencies": {
@@ -19,11 +20,15 @@
     "astro": "^7.4.2",
     "firebase": "^13.2.0",
     "firebase-admin": "^14.5.0",
+    "nodemailer": "^10.3.1",
     "tailwindcss": "^4.3.3"
   },
   "overrides": {
     "@grpc/grpc-js": "^1.14.7",
     "minimatch": "^11.0.4",
     "glob": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2"
   }
 }
