@@ -321,7 +321,9 @@ function formatDate(ts: any): string {
     };
 
     const submitBtn = document.getElementById("btn-submit-branch") as HTMLButtonElement | null;
+    const submitSpinner = document.getElementById("btn-submit-branch-spinner");
     if (submitBtn) submitBtn.disabled = true;
+    if (submitSpinner) submitSpinner.classList.remove("hidden");
     if (btnSubmitText) btnSubmitText.textContent = "Menerbitkan...";
 
     try {
@@ -345,6 +347,7 @@ function formatDate(ts: any): string {
       }
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+      if (submitSpinner) submitSpinner.classList.add("hidden");
       if (btnSubmitText) btnSubmitText.textContent = "Terbitkan Unit & Lisensi";
     }
   });

@@ -493,7 +493,10 @@ const linkedParents = parents.length - prospectParents;
         reason = prompt("Masukkan alasan penolakan (opsional):") || "";
       }
 
+      const originalHtml = btn.innerHTML;
       btn.disabled = true;
+      btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
       try {
         const response = await fetch("/api/admin/users/update-status", {
           method: "POST",
@@ -507,6 +510,7 @@ const linkedParents = parents.length - prospectParents;
         window.location.reload();
       } catch (err: any) {
         alert(err.message || "Terjadi kesalahan.");
+        btn.innerHTML = originalHtml;
         btn.disabled = false;
       }
     });
@@ -519,6 +523,7 @@ const linkedParents = parents.length - prospectParents;
   const btnCancelModal = document.getElementById("btn-cancel-modal");
   const userBackdrop = document.getElementById("user-modal-backdrop");
   const userForm = document.getElementById("user-upsert-form") as HTMLFormElement | null;
+  const userSuccessView = document.getElementById("user-success-view");
   const modalTitle = document.getElementById("modal-title");
   const formTargetUid = document.getElementById("form-target-uid") as HTMLInputElement | null;
   const formDisplayName = document.getElementById("form-display-name") as HTMLInputElement | null;
@@ -538,6 +543,10 @@ const linkedParents = parents.length - prospectParents;
   function openUserModal(isEdit = false) {
     if (!userModal) return;
     if (userAlert) userAlert.classList.add("hidden");
+
+    // Reset view state: show form, hide success card
+    userForm?.classList.remove("hidden");
+    userSuccessView?.classList.add("hidden");
 
     if (isEdit) {
       if (modalTitle) modalTitle.textContent = "Edit Data Pengguna";
@@ -625,7 +634,15 @@ const linkedParents = parents.length - prospectParents;
     }
 
     const btnSubmit = document.getElementById("btn-submit-user") as HTMLButtonElement | null;
+    const btnCancel = document.getElementById("btn-cancel-modal") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-submit-spinner");
+    const btnSubmitText = document.getElementById("btn-submit-text");
+
     if (btnSubmit) btnSubmit.disabled = true;
+    if (btnCancel) btnCancel.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+    if (btnSubmitText) btnSubmitText.textContent = isEdit ? "Menyimpan perubahan..." : "Membuat akun...";
+    if (userAlert) userAlert.classList.add("hidden");
 
     try {
       const res = await fetch(endpoint, {
@@ -637,9 +654,45 @@ const linkedParents = parents.length - prospectParents;
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal menyimpan data.");
 
-      alert(data.message || "Pengguna berhasil disimpan!");
-      closeUserModal();
-      window.location.reload();
+      if (isEdit) {
+        alert(data.message || "Data pengguna berhasil diperbarui!");
+        closeUserModal();
+        window.location.reload();
+      } else {
+        // Show success credential view card
+        userForm.classList.add("hidden");
+        userSuccessView?.classList.remove("hidden");
+
+        const successName = document.getElementById("success-display-name");
+        const successEmail = document.getElementById("success-email");
+        const successPw = document.getElementById("success-password");
+
+        if (successName) successName.textContent = data.displayName || payload.displayName;
+        if (successEmail) successEmail.textContent = data.email || payload.email;
+        if (successPw) successPw.textContent = data.temporaryPassword || "-";
+
+        // Setup copy password
+        const btnCopy = document.getElementById("btn-copy-password");
+        const copyBtnText = document.getElementById("copy-btn-text");
+        if (btnCopy) {
+          btnCopy.onclick = async () => {
+            try {
+              await navigator.clipboard.writeText(data.temporaryPassword);
+              if (copyBtnText) copyBtnText.textContent = "Tersalin!";
+              setTimeout(() => { if (copyBtnText) copyBtnText.textContent = "Salin"; }, 2000);
+            } catch {
+              prompt("Salin password:", data.temporaryPassword);
+            }
+          };
+        }
+
+        const btnFinish = document.getElementById("btn-success-finish");
+        if (btnFinish) {
+          btnFinish.onclick = () => {
+            window.location.reload();
+          };
+        }
+      }
     } catch (err: any) {
       if (userAlert) {
         userAlert.textContent = err.message || "Terjadi kesalahan.";
@@ -648,6 +701,9 @@ const linkedParents = parents.length - prospectParents;
       }
     } finally {
       if (btnSubmit) btnSubmit.disabled = false;
+      if (btnCancel) btnCancel.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+      if (btnSubmitText) btnSubmitText.textContent = "Simpan Pengguna";
     }
   });
 
@@ -659,6 +715,10 @@ const linkedParents = parents.length - prospectParents;
 
       if (!confirm(`Kirim tautan reset kata sandi ke email: ${email}?`)) return;
 
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 text-purple-700 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
       try {
         const res = await fetch("/api/admin/users/reset-password", {
           method: "POST",
@@ -667,9 +727,12 @@ const linkedParents = parents.length - prospectParents;
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Gagal membuat tautan reset.");
-        alert(`Tautan reset password berhasil dikirim ke ${email}!\n\nLink darurat:\n${data.resetLink}`);
+        alert(`Tautan reset password berhasil dibuat untuk ${email}!\n\nLink reset darurat:\n${data.resetLink}`);
       } catch (err: any) {
         alert(err.message || "Gagal memproses reset kata sandi.");
+      } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
       }
     });
   });
@@ -684,6 +747,10 @@ const linkedParents = parents.length - prospectParents;
       const confirmMsg = `PERINGATAN: Apakah Anda yakin ingin menghapus akun "${name}" secara permanen dari sistem?\nTindakan ini tidak dapat dibatalkan.`;
       if (!confirm(confirmMsg)) return;
 
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 text-rose-700 inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
       try {
         const res = await fetch("/api/admin/users/delete", {
           method: "POST",
@@ -696,6 +763,8 @@ const linkedParents = parents.length - prospectParents;
         window.location.reload();
       } catch (err: any) {
         alert(err.message || "Gagal menghapus akun.");
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
       }
     });
   });
@@ -892,7 +961,12 @@ const linkedParents = parents.length - prospectParents;
 
     const sendWelcomeEmail = (document.getElementById("import-send-email") as HTMLInputElement)?.checked;
     const btnText = document.getElementById("btn-import-text");
+    const btnSpinner = document.getElementById("btn-import-spinner");
+    const btnCancelImport = document.getElementById("btn-cancel-import") as HTMLButtonElement | null;
+
     btnExecuteImport.disabled = true;
+    if (btnCancelImport) btnCancelImport.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
     if (btnText) btnText.textContent = "Memproses Import...";
 
     try {
@@ -920,6 +994,8 @@ const linkedParents = parents.length - prospectParents;
       }
     } finally {
       btnExecuteImport.disabled = false;
+      if (btnCancelImport) btnCancelImport.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
       if (btnText) btnText.textContent = "Proses Import";
     }
   });

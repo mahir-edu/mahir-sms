@@ -20,6 +20,9 @@ import type {
 } from "../types/database";
 
 export const db = getFirestore(app);
+try {
+  db.settings({ ignoreUndefinedProperties: true });
+} catch {}
 
 // Collection References
 export const collections = {
@@ -321,9 +324,9 @@ export async function queueEmailNotification(params: {
     message: {
       subject: params.subject,
       html: params.html,
-      text: params.text,
+      text: params.text || "",
     },
-    metadata: params.metadata,
+    metadata: params.metadata || { notificationType: "school_announcement", branchId: "central" },
     delivery: {
       state: "PENDING",
       attempts: 0,

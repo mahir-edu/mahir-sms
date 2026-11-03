@@ -417,7 +417,13 @@ function formatDateShort(ts: any): string {
           </div>
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
             <button type="button" id="btn-cancel-edit" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
-            <button type="submit" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer">Simpan Perubahan</button>
+            <button type="submit" id="btn-submit-edit-branch" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer inline-flex items-center gap-1.5">
+              <svg id="btn-edit-branch-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span id="btn-edit-branch-text">Simpan Perubahan</span>
+            </button>
           </div>
         </form>
       </div>
@@ -474,7 +480,13 @@ function formatDateShort(ts: any): string {
 
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
             <button type="button" id="btn-cancel-renew" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
-            <button type="submit" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer">Simpan Perpanjangan</button>
+            <button type="submit" id="btn-submit-renew" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer inline-flex items-center gap-1.5">
+              <svg id="btn-renew-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span id="btn-renew-text">Simpan Perpanjangan</span>
+            </button>
           </div>
         </form>
       </div>
@@ -519,6 +531,14 @@ function formatDateShort(ts: any): string {
 
   formEdit?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-edit-branch") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-edit-branch-spinner");
+    const btnText = document.getElementById("btn-edit-branch-text");
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+    if (btnText) btnText.textContent = "Menyimpan...";
+
     const fd = new FormData(formEdit);
     const payload = {
       branchId: fd.get("branchId")?.toString(),
@@ -547,6 +567,10 @@ function formatDateShort(ts: any): string {
       window.location.reload();
     } catch (err: any) {
       alert(err.message || "Terjadi kesalahan.");
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+      if (btnText) btnText.textContent = "Simpan Perubahan";
     }
   });
 
@@ -565,6 +589,14 @@ function formatDateShort(ts: any): string {
 
   formRenew?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-renew") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-renew-spinner");
+    const btnText = document.getElementById("btn-renew-text");
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+    if (btnText) btnText.textContent = "Menyimpan...";
+
     const fd = new FormData(formRenew);
     const payload = {
       licenseId: fd.get("licenseId")?.toString(),
@@ -587,6 +619,11 @@ function formatDateShort(ts: any): string {
       window.location.reload();
     } catch (err: any) {
       alert(err.message || "Terjadi kesalahan.");
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+      if (btnText) btnText.textContent = "Simpan Perpanjangan";
     }
   });
 </script>
+
