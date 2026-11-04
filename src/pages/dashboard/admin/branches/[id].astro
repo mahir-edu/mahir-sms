@@ -6,13 +6,14 @@ import {
   getBranch, 
   getActiveBranchLicense, 
   getStaffForBranch, 
-  getStudentsForBranch 
+  getStudentsForBranch,
+  getAllLicenseTypes 
 } from "../../../../firebase/firestore";
 import DashboardLayout from "../../../../layouts/DashboardLayout.astro";
 import DashboardPageHeader from "../../../../components/dashboard/DashboardPageHeader.astro";
 import DataMetricCard from "../../../../components/dashboard/DataMetricCard.astro";
 import LicenseStatusBadge from "../../../../components/dashboard/LicenseStatusBadge.astro";
-import type { BranchDocument, BranchLicenseDocument, UserDocument, StudentDocument } from "../../../../types/database";
+import type { BranchDocument, BranchLicenseDocument, UserDocument, StudentDocument, LicenseTypeDocument } from "../../../../types/database";
 
 /* Verify user session & ensure HQ Admin role */
 const auth = getAuth(app);
@@ -51,6 +52,21 @@ if (!branch) {
 const license = await getActiveBranchLicense(branchId);
 const staff = await getStaffForBranch(branchId);
 const students = await getStudentsForBranch(branchId);
+const licenseTypes = await getAllLicenseTypes(true);
+
+const currentPackage = licenseTypes.find(
+  p => p.code.toLowerCase() === (license?.packageType || "").toLowerCase()
+);
+
+function toISODate(ts: any): string {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString().split("T")[0];
+}
+
+const initialDueDate = toISODate(license?.dueDate);
+const initialExpiryDate = toISODate(license?.expiryDate);
 
 // Calculate license days remaining
 const nowTime = Date.now();
@@ -125,9 +141,14 @@ function formatDateShort(ts: any): string {
       <div class="flex items-center gap-2 mb-1">
         <LicenseStatusBadge status={branch.licenseStatus || license?.status || "trial"} daysRemaining={daysRemaining} />
       </div>
-      <div class="text-[11px] font-bold text-purple-800 uppercase tracking-wider mt-2">
-        Paket {license?.packageType || "Standard"}
+      <div class="text-[11px] font-bold text-purple-800 uppercase tracking-wider mt-2 flex items-center gap-1.5">
+        <span>📜 {currentPackage ? currentPackage.name : `Paket ${license?.packageType || "Standard"}`}</span>
       </div>
+      {currentPackage?.defaultPrice ? (
+        <div class="text-[10px] text-purple-600 font-semibold mt-0.5">
+          Rp {currentPackage.defaultPrice.toLocaleString("id-ID")} / {currentPackage.billingCycle === "annual" ? "tahun" : currentPackage.billingCycle === "monthly" ? "bulan" : "sekali"}
+        </div>
+      ) : null}
     </div>
 
     <!-- Contract Due Date -->
@@ -181,7 +202,15 @@ function formatDateShort(ts: any): string {
 
   <!-- Branch Info Overview Card -->
   <div class="glass-card rounded-2xl p-5 mb-8 border border-slate-200">
-    <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Informasi Operasional Unit Cabang:</h3>
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Informasi Operasional Unit Cabang:</h3>
+      <a 
+        href="/dashboard/admin/licenses" 
+        class="text-[11px] font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1 transition-colors no-underline"
+      >
+        <span>💳 Master Paket Lisensi &rarr;</span>
+      </a>
+    </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
       <div>
         <span class="text-slate-400 block text-[11px]">Alamat Sekolah:</span>
@@ -199,6 +228,20 @@ function formatDateShort(ts: any): string {
         <span class="text-slate-400 block text-[11px]">Kunci Lisensi (Key):</span>
         <span class="font-mono text-[11px] font-bold text-purple-700">{license?.licenseKey || "MHR-LIC-AUTO"}</span>
       </div>
+    </div>
+
+    <!-- Entitlements Badge Strip -->
+    <div class="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+      <span class="text-[11px] font-bold text-slate-500">Tier Akses Materi:</span>
+      {(license?.allowedMaterialTiers || currentPackage?.allowedMaterialTiers || ["standard"]).map(tier => (
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 uppercase tracking-wider">
+          {tier.replace('_', ' ')}
+        </span>
+      ))}
+      <span class="text-slate-300">|</span>
+      <span class="text-[11px] text-slate-500">
+        Masa Tenggang: <strong class="text-slate-700 font-bold">{license?.gracePeriodDays ?? currentPackage?.defaultGracePeriodDays ?? 14} hari</strong>
+      </span>
     </div>
   </div>
 
@@ -434,58 +477,171 @@ function formatDateShort(ts: any): string {
   <div id="modal-renew-license" class="fixed inset-0 z-50 hidden overflow-y-auto">
     <div id="renew-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"></div>
     <div class="min-h-full flex items-center justify-center p-4">
-      <div class="relative bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 z-10">
+      <div class="relative bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 z-10">
         <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
           <div>
-            <h3 class="text-base font-bold text-slate-900">Perpanjang / Kelola Lisensi</h3>
-            <p class="text-xs text-slate-500">Perbarui jatuh tempo pembayaran atau ubah paket tier lisensi.</p>
+            <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>🔄 Perpanjang / Kelola Lisensi</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Perbarui paket kemitraan, perpanjang masa aktif, dan kelola alokasi kuota unit cabang.
+            </p>
           </div>
-          <button id="btn-close-renew" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer">✕</button>
+          <button id="btn-close-renew" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer text-sm">✕</button>
         </div>
 
-        <form id="form-renew-license" class="space-y-3">
+        <form id="form-renew-license" class="space-y-4">
           <input type="hidden" name="licenseId" value={license?.id || branch.activeLicenseId || ""} />
           
+          <!-- Dynamic Package Selection -->
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Paket Lisensi</label>
-            <select name="packageType" class="form-input text-xs py-2!">
-              <option value="standard" selected={license?.packageType === "standard"}>Paket Standard</option>
-              <option value="basic" selected={license?.packageType === "basic"}>Paket Basic</option>
-              <option value="premium" selected={license?.packageType === "premium"}>Paket Premium (Multisensory Kit)</option>
-              <option value="enterprise" selected={license?.packageType === "enterprise"}>Paket Enterprise</option>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-slate-700">Paket Lisensi Kemitraan <span class="text-rose-500">*</span></label>
+              <a href="/dashboard/admin/licenses" class="text-[11px] font-bold text-purple-600 hover:text-purple-800 hover:underline" target="_blank">
+                + Kelola Master Paket ↗
+              </a>
+            </div>
+            <select name="packageType" id="renew-package-select" class="form-input text-xs py-2!" required>
+              {licenseTypes.map(pkg => (
+                <option 
+                  value={pkg.code} 
+                  selected={pkg.code.toLowerCase() === (license?.packageType || "standard").toLowerCase()}
+                  data-name={pkg.name}
+                  data-price={pkg.defaultPrice}
+                  data-billing={pkg.billingCycle}
+                  data-max-teachers={pkg.defaultMaxTeachers}
+                  data-max-students={pkg.defaultMaxStudents}
+                  data-grace-period={pkg.defaultGracePeriodDays}
+                >
+                  {pkg.name} — Rp {pkg.defaultPrice.toLocaleString("id-ID")} ({pkg.billingCycle === "annual" ? "Tahunan" : pkg.billingCycle === "monthly" ? "Bulanan" : "Sekali Bayar"})
+                </option>
+              ))}
             </select>
+
+            <!-- Dynamic Package Details Pill -->
+            <div id="renew-package-preview" class="mt-2 p-2.5 rounded-xl bg-purple-50/70 border border-purple-200/80 text-[11px] text-purple-900 flex flex-col gap-1">
+              <div class="flex items-center justify-between font-bold">
+                <span id="preview-pkg-price" class="text-purple-900 font-extrabold">Rp 0 / tahun</span>
+                <button 
+                  type="button" 
+                  id="btn-apply-pkg-defaults" 
+                  class="text-[10px] font-bold text-purple-700 hover:text-purple-950 underline cursor-pointer"
+                >
+                  Gunakan Kuota Default Paket Ini
+                </button>
+              </div>
+              <div class="flex items-center gap-2 text-[10px] text-purple-700">
+                <span>Guru: <strong id="preview-pkg-teachers">-</strong></span>
+                <span>•</span>
+                <span>Siswa: <strong id="preview-pkg-students">-</strong></span>
+                <span>•</span>
+                <span>Masa Tenggang: <strong id="preview-pkg-grace">-</strong> hari</span>
+              </div>
+            </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Jatuh Tempo Baru</label>
-              <input type="date" name="dueDate" required class="form-input text-xs py-2!" />
+          <!-- Quick Extension Presets -->
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div class="text-[11px] font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span>Perpanjangan Tanggal Cepat:</span>
+              <span class="text-[10px] font-normal text-slate-400">Klik untuk isi otomatis</span>
             </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Kedaluwarsa Baru</label>
-              <input type="date" name="expiryDate" required class="form-input text-xs py-2!" />
+            <div class="flex items-center gap-1.5">
+              <button 
+                type="button" 
+                class="btn-preset px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-slate-700 hover:text-purple-700 transition-colors cursor-pointer"
+                data-months="12"
+              >
+                +1 Tahun (12 Bln)
+              </button>
+              <button 
+                type="button" 
+                class="btn-preset px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-slate-700 hover:text-purple-700 transition-colors cursor-pointer"
+                data-months="6"
+              >
+                +6 Bulan
+              </button>
+              <button 
+                type="button" 
+                class="btn-preset px-2.5 py-1 rounded-lg text-[10px] font-bold bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-slate-700 hover:text-purple-700 transition-colors cursor-pointer"
+                data-months="1"
+              >
+                +1 Bulan
+              </button>
             </div>
           </div>
 
+          <!-- Due Date & Expiry Date -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Jatuh Tempo Baru <span class="text-rose-500">*</span></label>
+              <input 
+                type="date" 
+                name="dueDate" 
+                id="renew-due-date" 
+                value={initialDueDate} 
+                required 
+                class="form-input text-xs py-2!" 
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Kedaluwarsa Baru <span class="text-rose-500">*</span></label>
+              <input 
+                type="date" 
+                name="expiryDate" 
+                id="renew-expiry-date" 
+                value={initialExpiryDate} 
+                required 
+                class="form-input text-xs py-2!" 
+              />
+            </div>
+          </div>
+
+          <!-- Quotas & Grace Period -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Guru</label>
-              <input type="number" name="maxTeachers" value={license?.maxTeachers || 15} min="1" class="form-input text-xs py-2!" />
+              <input 
+                type="number" 
+                name="maxTeachers" 
+                id="renew-max-teachers" 
+                value={license?.maxTeachers || currentPackage?.defaultMaxTeachers || 15} 
+                min="1" 
+                class="form-input text-xs py-2!" 
+              />
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Siswa</label>
-              <input type="number" name="maxStudents" value={license?.maxStudents || 150} min="1" class="form-input text-xs py-2!" />
+              <input 
+                type="number" 
+                name="maxStudents" 
+                id="renew-max-students" 
+                value={license?.maxStudents || currentPackage?.defaultMaxStudents || 150} 
+                min="1" 
+                class="form-input text-xs py-2!" 
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tenggang (Hari)</label>
+              <input 
+                type="number" 
+                name="gracePeriodDays" 
+                id="renew-grace-days" 
+                value={license?.gracePeriodDays ?? currentPackage?.defaultGracePeriodDays ?? 14} 
+                min="0" 
+                class="form-input text-xs py-2!" 
+              />
             </div>
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <button type="button" id="btn-cancel-renew" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
-            <button type="submit" id="btn-submit-renew" class="btn-primary text-xs py-1.5! px-4! font-bold cursor-pointer inline-flex items-center gap-1.5">
+            <button type="button" id="btn-cancel-renew" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Batal</button>
+            <button type="submit" id="btn-submit-renew" class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer inline-flex items-center gap-1.5">
               <svg id="btn-renew-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span id="btn-renew-text">Simpan Perpanjangan</span>
+              <span id="btn-renew-text">Simpan & Aktifkan Lisensi</span>
             </button>
           </div>
         </form>
@@ -581,6 +737,80 @@ function formatDateShort(ts: any): string {
   const btnCancelRenew = document.getElementById("btn-cancel-renew");
   const renewBackdrop = document.getElementById("renew-backdrop");
   const formRenew = document.getElementById("form-renew-license") as HTMLFormElement | null;
+  const packageSelect = document.getElementById("renew-package-select") as HTMLSelectElement | null;
+  const btnApplyDefaults = document.getElementById("btn-apply-pkg-defaults");
+
+  const previewPrice = document.getElementById("preview-pkg-price");
+  const previewTeachers = document.getElementById("preview-pkg-teachers");
+  const previewStudents = document.getElementById("preview-pkg-students");
+  const previewGrace = document.getElementById("preview-pkg-grace");
+
+  const inputDueDate = document.getElementById("renew-due-date") as HTMLInputElement | null;
+  const inputExpiryDate = document.getElementById("renew-expiry-date") as HTMLInputElement | null;
+  const inputMaxTeachers = document.getElementById("renew-max-teachers") as HTMLInputElement | null;
+  const inputMaxStudents = document.getElementById("renew-max-students") as HTMLInputElement | null;
+  const inputGraceDays = document.getElementById("renew-grace-days") as HTMLInputElement | null;
+
+  function updatePackagePreview() {
+    if (!packageSelect) return;
+    const opt = packageSelect.options[packageSelect.selectedIndex];
+    if (!opt) return;
+
+    const price = Number(opt.dataset.price) || 0;
+    const billing = opt.dataset.billing || "annual";
+    const billingLabel = billing === "annual" ? "tahun" : billing === "monthly" ? "bulan" : "sekali bayar";
+    const teachers = opt.dataset.maxTeachers || "15";
+    const students = opt.dataset.maxStudents || "150";
+    const grace = opt.dataset.gracePeriod || "14";
+
+    if (previewPrice) {
+      previewPrice.textContent = `Rp ${price.toLocaleString("id-ID")} / ${billingLabel}`;
+    }
+    if (previewTeachers) previewTeachers.textContent = `${teachers} Guru`;
+    if (previewStudents) previewStudents.textContent = `${students} Siswa`;
+    if (previewGrace) previewGrace.textContent = grace;
+  }
+
+  packageSelect?.addEventListener("change", updatePackagePreview);
+  updatePackagePreview();
+
+  btnApplyDefaults?.addEventListener("click", () => {
+    if (!packageSelect) return;
+    const opt = packageSelect.options[packageSelect.selectedIndex];
+    if (!opt) return;
+
+    if (opt.dataset.maxTeachers && inputMaxTeachers) inputMaxTeachers.value = opt.dataset.maxTeachers;
+    if (opt.dataset.maxStudents && inputMaxStudents) inputMaxStudents.value = opt.dataset.maxStudents;
+    if (opt.dataset.gracePeriod && inputGraceDays) inputGraceDays.value = opt.dataset.gracePeriod;
+  });
+
+  // Quick Date Extension Presets
+  const presetButtons = document.querySelectorAll<HTMLButtonElement>(".btn-preset");
+  presetButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const months = Number(btn.dataset.months) || 12;
+      let baseDate = new Date();
+
+      // If current expiry date is in the future, calculate extension from it
+      if (inputExpiryDate && inputExpiryDate.value) {
+        const cur = new Date(inputExpiryDate.value);
+        if (!isNaN(cur.getTime()) && cur.getTime() > Date.now()) {
+          baseDate = cur;
+        }
+      }
+
+      const targetDate = new Date(baseDate);
+      targetDate.setMonth(targetDate.getMonth() + months);
+
+      const yyyy = targetDate.getFullYear();
+      const mm = String(targetDate.getMonth() + 1).padStart(2, "0");
+      const dd = String(targetDate.getDate()).padStart(2, "0");
+      const formatted = `${yyyy}-${mm}-${dd}`;
+
+      if (inputExpiryDate) inputExpiryDate.value = formatted;
+      if (inputDueDate) inputDueDate.value = formatted;
+    });
+  });
 
   btnOpenRenew?.addEventListener("click", () => modalRenew?.classList.remove("hidden"));
   btnCloseRenew?.addEventListener("click", () => modalRenew?.classList.add("hidden"));
@@ -605,6 +835,7 @@ function formatDateShort(ts: any): string {
       expiryDate: fd.get("expiryDate")?.toString(),
       maxTeachers: Number(fd.get("maxTeachers")),
       maxStudents: Number(fd.get("maxStudents")),
+      gracePeriodDays: Number(fd.get("gracePeriodDays")) || 14,
     };
 
     try {

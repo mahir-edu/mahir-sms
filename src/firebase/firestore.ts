@@ -1066,7 +1066,19 @@ export async function renewBranchLicense(licenseId: string, params: {
     isActive: true,
   };
 
-  if (params.packageType) updateData.packageType = params.packageType;
+  if (params.packageType) {
+    updateData.packageType = params.packageType;
+    // Synchronize package entitlements if exists in master license_types
+    const pkg = await getLicenseTypeByCode(params.packageType);
+    if (pkg) {
+      if (pkg.allowedMaterialTiers && pkg.allowedMaterialTiers.length > 0) {
+        updateData.allowedMaterialTiers = pkg.allowedMaterialTiers;
+      }
+      if (pkg.allowedCurriculumIds && pkg.allowedCurriculumIds.length > 0) {
+        updateData.allowedCurriculums = pkg.allowedCurriculumIds;
+      }
+    }
+  }
   if (params.dueDate) updateData.dueDate = Timestamp.fromDate(new Date(params.dueDate));
   if (params.expiryDate) updateData.expiryDate = Timestamp.fromDate(new Date(params.expiryDate));
   if (params.maxStudents) updateData.maxStudents = Number(params.maxStudents);
