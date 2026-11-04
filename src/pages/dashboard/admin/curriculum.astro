@@ -5,6 +5,7 @@ import { getUserProfile, getAllCurriculums } from "../../../firebase/firestore";
 import DashboardLayout from "../../../layouts/DashboardLayout.astro";
 import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
 import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
+import CurriculumModal from "../../../components/dashboard/CurriculumModal.astro";
 
 /* Verify user session & ensure HQ Admin role */
 const auth = getAuth(app);
@@ -33,6 +34,7 @@ if (!userProfile || userProfile.role !== "hq_admin") {
 const curriculums = await getAllCurriculums();
 const totalModules = curriculums.reduce((sum, c) => sum + (c.totalModules || 0), 0);
 const totalMaterials = curriculums.reduce((sum, c) => sum + (c.totalMaterials || 0), 0);
+const activeCurriculumsCount = curriculums.filter(c => c.isActive !== false).length;
 ---
 
 <DashboardLayout 
@@ -42,17 +44,24 @@ const totalMaterials = curriculums.reduce((sum, c) => sum + (c.totalMaterials ||
 >
   <DashboardPageHeader 
     title="Pustaka Kurikulum & Modul Ajar"
-    description="Kelola master kurikulum multisensori 5-Pilar, silabus, dan modul pengajaran untuk seluruh unit Sekolah Pemancar."
+    description="Kelola master kurikulum multisensori 5-Pilar, silabus RPP, dan modul pengajaran untuk seluruh unit Sekolah Pemancar."
     breadcrumbs={[
       { label: "Central HQ Admin" },
       { label: "Pustaka Kurikulum" }
     ]}
   >
-    <div slot="actions">
+    <div slot="actions" class="flex items-center gap-2">
+      <a 
+        href="/dashboard/admin/materials" 
+        class="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs no-underline"
+      >
+        <span>📁</span>
+        <span>Pustaka Materi & Aset</span>
+      </a>
       <button 
         type="button" 
+        id="btn-open-create-curr"
         class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
-        onclick="alert('Formulir pembuatan kurikulum baru akan segera aktif.')"
       >
         <span>+ Tambah Kurikulum Baru</span>
       </button>
@@ -64,75 +73,351 @@ const totalMaterials = curriculums.reduce((sum, c) => sum + (c.totalMaterials ||
     <DataMetricCard 
       title="Total Kurikulum"
       value={curriculums.length}
-      subtext="Kurikulum master aktif"
+      subtext={`${activeCurriculumsCount} kurikulum aktif`}
       icon="📚"
       theme="indigo"
     />
     <DataMetricCard 
-      title="Total Modul Ajar"
+      title="Total Modul RPP"
       value={totalModules}
-      subtext="RPP multisensori terpadu"
+      subtext="Modul 5-pilar terstruktur"
       icon="📝"
       theme="emerald"
     />
     <DataMetricCard 
-      title="Materi Terkait"
+      title="Materi & Alat Peraga"
       value={totalMaterials}
-      subtext="Worksheet & alat peraga"
+      subtext="Worksheet & modul terhubung"
       icon="📁"
       theme="sky"
     />
     <DataMetricCard 
       title="Metodologi 5-Pilar"
       value="100%"
-      subtext="Standar terintegrasi"
+      subtext="Standar terintegrasi penuh"
       icon="⭐"
       theme="lime"
     />
   </div>
 
+  <!-- Search & Filter Bar -->
+  <div class="glass-card rounded-2xl p-4 mb-6 border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+    <div class="relative flex-1">
+      <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">🔍</span>
+      <input 
+        type="text" 
+        id="search-curr" 
+        placeholder="Cari judul kurikulum, mata pelajaran, atau deskripsi..." 
+        class="form-input text-xs pl-9! py-2!" 
+      />
+    </div>
+
+    <div class="flex items-center gap-2">
+      <select id="filter-grade" class="form-input text-xs py-2! sm:w-44">
+        <option value="">Semua Jenjang</option>
+        <option value="PAUD">PAUD / TK</option>
+        <option value="Kelas 1">Kelas 1 SD</option>
+        <option value="Kelas 2">Kelas 2 SD</option>
+        <option value="Kelas 3">Kelas 3 SD</option>
+        <option value="Kelas 4">Kelas 4 SD</option>
+        <option value="Kelas 5">Kelas 5 SD</option>
+        <option value="Kelas 6">Kelas 6 SD</option>
+        <option value="SMP">Tingkat SMP</option>
+      </select>
+      <select id="filter-status" class="form-input text-xs py-2! sm:w-36">
+        <option value="">Semua Status</option>
+        <option value="active">Aktif</option>
+        <option value="inactive">Nonaktif</option>
+      </select>
+    </div>
+  </div>
+
   <!-- Curriculum Card Grid -->
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="curriculum-grid">
     {curriculums.length === 0 ? (
       <div class="col-span-full glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
         <div class="text-4xl mb-2">📚</div>
         <p class="font-bold text-slate-700 text-sm">Belum Ada Kurikulum Master</p>
-        <p class="text-xs mt-1">Jalankan seed database atau tambahkan kurikulum baru untuk memulai.</p>
+        <p class="text-xs mt-1">Gunakan tombol "+ Tambah Kurikulum Baru" untuk membuat silabus pertama.</p>
       </div>
     ) : (
       curriculums.map((curr) => (
-        <div class="glass-card glass-card-hover rounded-2xl p-6 border border-slate-200 flex flex-col justify-between">
+        <div 
+          class="curr-card glass-card glass-card-hover rounded-2xl p-6 border border-slate-200 flex flex-col justify-between transition-all"
+          data-title={curr.title.toLowerCase()}
+          data-subject={curr.subject.toLowerCase()}
+          data-desc={(curr.description || "").toLowerCase()}
+          data-grade={curr.gradeCategory || `Kelas ${curr.gradeLevel}`}
+          data-status={curr.isActive !== false ? "active" : "inactive"}
+        >
           <div>
             <div class="flex items-center justify-between mb-3">
-              <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
-                Kelas {curr.gradeLevel} SD
-              </span>
+              <div class="flex items-center gap-1.5">
+                <span class={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  curr.gradeLevel === 0 
+                    ? "bg-amber-100 text-amber-800 border border-amber-200"
+                    : curr.gradeLevel >= 7 
+                    ? "bg-purple-100 text-purple-800 border border-purple-200"
+                    : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                }`}>
+                  {curr.gradeCategory || `Kelas ${curr.gradeLevel} SD`}
+                </span>
+                {curr.isActive === false ? (
+                  <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-200 text-slate-700">Nonaktif</span>
+                ) : null}
+              </div>
               <span class="text-xs font-mono font-semibold text-slate-400">v{curr.version}</span>
             </div>
 
-            <h3 class="text-base font-bold text-slate-900 mb-2 leading-snug">
+            <h3 class="text-base font-bold text-slate-900 mb-1 leading-snug">
               {curr.title}
             </h3>
-            <p class="text-xs text-slate-600 leading-relaxed mb-4">
-              {curr.description}
+            <div class="text-[11px] font-bold text-brand-indigo mb-2">
+              Mata Pelajaran: {curr.subject}
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed mb-4 line-clamp-3">
+              {curr.description || "Silabus kurikulum dengan integrasi metodologi multisensori Mahir Edu."}
             </p>
           </div>
 
-          <div class="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-            <div class="flex items-center gap-3 text-slate-500 font-semibold text-[11px]">
-              <span>📝 {curr.totalModules || 0} Modul</span>
-              <span>&bull;</span>
-              <span>📁 {curr.totalMaterials || 0} Lembar Kerja</span>
+          <div>
+            <div class="py-3 px-3.5 mb-4 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs text-slate-600 font-semibold">
+              <div class="flex items-center gap-1.5">
+                <span>📝</span>
+                <span><strong>{curr.totalModules || 0}</strong> Modul RPP</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span>📁</span>
+                <span><strong>{curr.totalMaterials || 0}</strong> Berkas Materi</span>
+              </div>
             </div>
-            <a 
-              href="/dashboard/admin/materials" 
-              class="text-emerald-700 hover:text-emerald-800 font-bold hover:underline"
-            >
-              Lihat Materi &rarr;
-            </a>
+
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-1.5">
+                <button 
+                  type="button" 
+                  class="btn-edit-curr text-[11px] font-bold text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
+                  data-curr={JSON.stringify(curr)}
+                >
+                  Edit
+                </button>
+                <span class="text-slate-300">•</span>
+                <button 
+                  type="button" 
+                  class="btn-archive-curr text-[11px] font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                  data-id={curr.id}
+                  data-active={curr.isActive !== false}
+                >
+                  {curr.isActive !== false ? "Arsipkan" : "Aktifkan"}
+                </button>
+              </div>
+
+              <a 
+                href={`/dashboard/admin/curriculum/${curr.id}`} 
+                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors no-underline"
+              >
+                <span>Kelola Silabus</span>
+                <span>&rarr;</span>
+              </a>
+            </div>
           </div>
         </div>
       ))
     )}
   </div>
+
+  <!-- Curriculum Modal -->
+  <CurriculumModal />
 </DashboardLayout>
+
+<script>
+  // Search & Filters
+  const searchInput = document.getElementById("search-curr") as HTMLInputElement | null;
+  const filterGrade = document.getElementById("filter-grade") as HTMLSelectElement | null;
+  const filterStatus = document.getElementById("filter-status") as HTMLSelectElement | null;
+  const cards = document.querySelectorAll<HTMLElement>(".curr-card");
+
+  function applyFilters() {
+    const q = searchInput?.value.toLowerCase().trim() || "";
+    const g = filterGrade?.value || "";
+    const s = filterStatus?.value || "";
+
+    cards.forEach(card => {
+      const title = card.dataset.title || "";
+      const subject = card.dataset.subject || "";
+      const desc = card.dataset.desc || "";
+      const grade = card.dataset.grade || "";
+      const status = card.dataset.status || "";
+
+      const matchQ = !q || title.includes(q) || subject.includes(q) || desc.includes(q);
+      const matchG = !g || grade.includes(g);
+      const matchS = !s || status === s;
+
+      if (matchQ && matchG && matchS) {
+        card.style.display = "";
+      } else {
+        card.style.display = "none";
+      }
+    });
+  }
+
+  searchInput?.addEventListener("input", applyFilters);
+  filterGrade?.addEventListener("change", applyFilters);
+  filterStatus?.addEventListener("change", applyFilters);
+
+  // Modal Controls
+  const modal = document.getElementById("curriculum-modal");
+  const btnOpenCreate = document.getElementById("btn-open-create-curr");
+  const btnClose = document.getElementById("btn-close-curriculum-modal");
+  const btnCancel = document.getElementById("btn-cancel-curriculum");
+  const backdrop = document.getElementById("curriculum-modal-backdrop");
+  const form = document.getElementById("form-curriculum") as HTMLFormElement | null;
+  const alertBox = document.getElementById("curriculum-modal-alert");
+  const modalTitle = document.getElementById("curriculum-modal-title");
+  const submitText = document.getElementById("btn-curriculum-text");
+  const statusContainer = document.getElementById("curr-status-container");
+
+  const inputId = document.getElementById("curr-id") as HTMLInputElement | null;
+  const inputTitle = document.getElementById("curr-title") as HTMLInputElement | null;
+  const inputSubject = document.getElementById("curr-subject") as HTMLInputElement | null;
+  const inputVersion = document.getElementById("curr-version") as HTMLInputElement | null;
+  const selectGradeCat = document.getElementById("curr-grade-category") as HTMLSelectElement | null;
+  const inputGradeLevel = document.getElementById("curr-grade-level") as HTMLInputElement | null;
+  const inputDesc = document.getElementById("curr-description") as HTMLTextAreaElement | null;
+  const inputIsActive = document.getElementById("curr-is-active") as HTMLInputElement | null;
+
+  selectGradeCat?.addEventListener("change", () => {
+    const opt = selectGradeCat.options[selectGradeCat.selectedIndex];
+    if (opt && inputGradeLevel) {
+      inputGradeLevel.value = opt.dataset.level || "1";
+    }
+  });
+
+  function openCreateModal() {
+    form?.reset();
+    if (inputId) inputId.value = "";
+    if (modalTitle) modalTitle.innerHTML = "<span>📚 Tambah Kurikulum Master Baru</span>";
+    if (submitText) submitText.textContent = "Terbitkan Kurikulum";
+    if (statusContainer) statusContainer.classList.add("hidden");
+    if (alertBox) alertBox.classList.add("hidden");
+    modal?.classList.remove("hidden");
+  }
+
+  function openEditModal(curr: any) {
+    if (!curr) return;
+    if (inputId) inputId.value = curr.id;
+    if (inputTitle) inputTitle.value = curr.title || "";
+    if (inputSubject) inputSubject.value = curr.subject || "";
+    if (inputVersion) inputVersion.value = curr.version || "2026.1";
+    if (inputDesc) inputDesc.value = curr.description || "";
+    if (selectGradeCat) selectGradeCat.value = curr.gradeCategory || `Kelas ${curr.gradeLevel} SD`;
+    if (inputGradeLevel) inputGradeLevel.value = String(curr.gradeLevel ?? 1);
+    if (inputIsActive) inputIsActive.checked = curr.isActive !== false;
+
+    if (modalTitle) modalTitle.innerHTML = "<span>✏️ Edit Kurikulum Master</span>";
+    if (submitText) submitText.textContent = "Simpan Perubahan";
+    if (statusContainer) statusContainer.classList.remove("hidden");
+    if (alertBox) alertBox.classList.add("hidden");
+    modal?.classList.remove("hidden");
+  }
+
+  function closeModal() {
+    modal?.classList.add("hidden");
+  }
+
+  btnOpenCreate?.addEventListener("click", openCreateModal);
+  btnClose?.addEventListener("click", closeModal);
+  btnCancel?.addEventListener("click", closeModal);
+  backdrop?.addEventListener("click", closeModal);
+
+  // Edit Button Handlers
+  document.querySelectorAll<HTMLButtonElement>(".btn-edit-curr").forEach(btn => {
+    btn.addEventListener("click", () => {
+      try {
+        const curr = JSON.parse(btn.dataset.curr || "{}");
+        openEditModal(curr);
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  });
+
+  // Archive / Toggle Handler
+  document.querySelectorAll<HTMLButtonElement>(".btn-archive-curr").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const isActive = btn.dataset.active === "true";
+      const confirmMsg = isActive 
+        ? "Nonaktifkan kurikulum ini? Sekolah pemancar tidak akan dapat mengakses kurikulum ini." 
+        : "Aktifkan kembali kurikulum ini?";
+      
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch("/api/admin/curriculum/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, action: "archive" }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal mengubah status kurikulum.");
+        alert(data.message);
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message || "Terjadi kesalahan.");
+      }
+    });
+  });
+
+  // Form Submit Handler
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-curriculum") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-curriculum-spinner");
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+    if (submitText) submitText.textContent = "Menyimpan...";
+
+    const fd = new FormData(form);
+    const currId = fd.get("id")?.toString();
+    const isEdit = Boolean(currId);
+
+    const payload = {
+      id: currId,
+      title: fd.get("title")?.toString()?.trim(),
+      subject: fd.get("subject")?.toString()?.trim(),
+      version: fd.get("version")?.toString()?.trim(),
+      gradeCategory: fd.get("gradeCategory")?.toString()?.trim(),
+      gradeLevel: Number(fd.get("gradeLevel")) || 1,
+      description: fd.get("description")?.toString()?.trim(),
+      isActive: fd.get("isActive") === "on",
+    };
+
+    const endpoint = isEdit ? "/api/admin/curriculum/update" : "/api/admin/curriculum/create";
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan kurikulum.");
+
+      alert(data.message || "Kurikulum berhasil disimpan!");
+      closeModal();
+      window.location.reload();
+    } catch (err: any) {
+      if (alertBox) {
+        alertBox.textContent = err.message || "Terjadi kesalahan.";
+        alertBox.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        alertBox.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+      if (submitText) submitText.textContent = isEdit ? "Simpan Perubahan" : "Terbitkan Kurikulum";
+    }
+  });
+</script>

@@ -5,6 +5,9 @@ import type {
   BranchDocument,
   BranchLicenseDocument,
   CurriculumDocument,
+  LessonPlanDocument,
+  MethodologyStep,
+  MaterialType,
   LessonMaterialDocument,
   CalendarEventDocument,
   ClassDocument,
@@ -210,9 +213,328 @@ export async function getAllCurriculums(): Promise<CurriculumDocument[]> {
   return snapshot.docs.map(doc => doc.data() as CurriculumDocument);
 }
 
+export async function getCurriculumById(id: string): Promise<CurriculumDocument | null> {
+  const doc = await collections.curriculums().doc(id).get();
+  return doc.exists ? (doc.data() as CurriculumDocument) : null;
+}
+
+export async function createCurriculum(params: {
+  id?: string;
+  title: string;
+  subject: string;
+  gradeLevel: number;
+  gradeCategory?: string;
+  version: string;
+  description: string;
+  adminUid: string;
+}): Promise<string> {
+  const cleanSubject = params.subject.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5);
+  const slug = params.id
+    ? params.id.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-")
+    : `cur-${cleanSubject}-g${params.gradeLevel}-${Date.now().toString(36).slice(-4)}`;
+
+  const existing = await getCurriculumById(slug);
+  if (existing) {
+    throw new Error(`Kurikulum dengan ID "${slug}" sudah ada.`);
+  }
+
+  const now = Timestamp.now();
+  const docData: CurriculumDocument = {
+    id: slug,
+    title: params.title.trim(),
+    subject: params.subject.trim(),
+    gradeLevel: Number(params.gradeLevel) || 1,
+    gradeCategory: params.gradeCategory || (params.gradeLevel === 0 ? "PAUD / TK" : `Kelas ${params.gradeLevel} SD`),
+    version: params.version.trim() || "2026.1",
+    description: params.description.trim(),
+    isActive: true,
+    totalModules: 0,
+    totalMaterials: 0,
+    createdByUid: params.adminUid,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await collections.curriculums().doc(slug).set(docData);
+  return slug;
+}
+
+export async function updateCurriculum(id: string, params: {
+  title?: string;
+  subject?: string;
+  gradeLevel?: number;
+  gradeCategory?: string;
+  version?: string;
+  description?: string;
+  isActive?: boolean;
+}): Promise<void> {
+  const ref = collections.curriculums().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new Error("Kurikulum tidak ditemukan.");
+  }
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (params.title !== undefined) updateData.title = params.title.trim();
+  if (params.subject !== undefined) updateData.subject = params.subject.trim();
+  if (params.gradeLevel !== undefined) {
+    updateData.gradeLevel = Number(params.gradeLevel);
+    if (!params.gradeCategory) {
+      updateData.gradeCategory = params.gradeLevel === 0 ? "PAUD / TK" : `Kelas ${params.gradeLevel} SD`;
+    }
+  }
+  if (params.gradeCategory !== undefined) updateData.gradeCategory = params.gradeCategory.trim();
+  if (params.version !== undefined) updateData.version = params.version.trim();
+  if (params.description !== undefined) updateData.description = params.description.trim();
+  if (params.isActive !== undefined) updateData.isActive = Boolean(params.isActive);
+
+  await ref.update(updateData);
+}
+
+export async function deleteCurriculum(id: string): Promise<void> {
+  const plans = await getLessonPlansForCurriculum(id);
+  if (plans.length > 0) {
+    throw new Error(`Tidak dapat menghapus kurikulum karena masih memiliki ${plans.length} modul RPP. Harap hapus modul terlebih dahulu.`);
+  }
+  const mats = await getLessonMaterialsByCurriculum(id);
+  if (mats.length > 0) {
+    throw new Error(`Tidak dapat menghapus kurikulum karena masih memiliki ${mats.length} materi terhubung.`);
+  }
+  await collections.curriculums().doc(id).delete();
+}
+
+// ----------------- Lesson Plan / Module Functions -----------------
+export async function getLessonPlansForCurriculum(curriculumId: string): Promise<LessonPlanDocument[]> {
+  const snapshot = await collections.lessonPlans()
+    .where("curriculumId", "==", curriculumId)
+    .get();
+  const plans = snapshot.docs.map(d => d.data() as LessonPlanDocument);
+  return plans.sort((a, b) => (a.moduleNumber || 0) - (b.moduleNumber || 0));
+}
+
+export async function getLessonPlanById(id: string): Promise<LessonPlanDocument | null> {
+  const doc = await collections.lessonPlans().doc(id).get();
+  return doc.exists ? (doc.data() as LessonPlanDocument) : null;
+}
+
+export async function createLessonPlan(params: {
+  curriculumId: string;
+  moduleNumber: number;
+  topicTitle: string;
+  methodologySteps?: MethodologyStep[];
+  learningObjectives?: string[];
+  materialsNeeded?: string[];
+  linkedMaterialIds?: string[];
+  adminUid: string;
+}): Promise<string> {
+  const curr = await getCurriculumById(params.curriculumId);
+  if (!curr) throw new Error("Kurikulum induk tidak ditemukan.");
+
+  const id = `lp-${params.curriculumId}-m${String(params.moduleNumber).padStart(2, "0")}`;
+  const now = Timestamp.now();
+
+  const docData: LessonPlanDocument = {
+    id,
+    curriculumId: params.curriculumId,
+    moduleNumber: Number(params.moduleNumber) || 1,
+    topicTitle: params.topicTitle.trim(),
+    methodologySteps: params.methodologySteps || [],
+    learningObjectives: params.learningObjectives || [],
+    materialsNeeded: params.materialsNeeded || [],
+    linkedMaterialIds: params.linkedMaterialIds || [],
+    createdByUid: params.adminUid,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await collections.lessonPlans().doc(id).set(docData);
+
+  // Recalculate totalModules on Curriculum
+  const allPlans = await getLessonPlansForCurriculum(params.curriculumId);
+  await collections.curriculums().doc(params.curriculumId).update({
+    totalModules: allPlans.length,
+    updatedAt: now,
+  });
+
+  return id;
+}
+
+export async function updateLessonPlan(id: string, params: {
+  moduleNumber?: number;
+  topicTitle?: string;
+  methodologySteps?: MethodologyStep[];
+  learningObjectives?: string[];
+  materialsNeeded?: string[];
+  linkedMaterialIds?: string[];
+}): Promise<void> {
+  const ref = collections.lessonPlans().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("Modul RPP tidak ditemukan.");
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (params.moduleNumber !== undefined) updateData.moduleNumber = Number(params.moduleNumber);
+  if (params.topicTitle !== undefined) updateData.topicTitle = params.topicTitle.trim();
+  if (params.methodologySteps !== undefined) updateData.methodologySteps = params.methodologySteps;
+  if (params.learningObjectives !== undefined) updateData.learningObjectives = params.learningObjectives;
+  if (params.materialsNeeded !== undefined) updateData.materialsNeeded = params.materialsNeeded;
+  if (params.linkedMaterialIds !== undefined) updateData.linkedMaterialIds = params.linkedMaterialIds;
+
+  await ref.update(updateData);
+}
+
+export async function deleteLessonPlan(id: string): Promise<void> {
+  const ref = collections.lessonPlans().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return;
+  const data = doc.data() as LessonPlanDocument;
+
+  await ref.delete();
+
+  if (data.curriculumId) {
+    const remaining = await getLessonPlansForCurriculum(data.curriculumId);
+    await collections.curriculums().doc(data.curriculumId).update({
+      totalModules: remaining.length,
+      updatedAt: Timestamp.now(),
+    });
+  }
+}
+
+// ----------------- Lesson Materials Functions -----------------
 export async function getAllLessonMaterials(): Promise<LessonMaterialDocument[]> {
   const snapshot = await collections.lessonMaterials().orderBy("createdAt", "desc").get();
   return snapshot.docs.map(doc => doc.data() as LessonMaterialDocument);
+}
+
+export async function getLessonMaterialById(id: string): Promise<LessonMaterialDocument | null> {
+  const doc = await collections.lessonMaterials().doc(id).get();
+  return doc.exists ? (doc.data() as LessonMaterialDocument) : null;
+}
+
+export async function getLessonMaterialsByCurriculum(curriculumId: string): Promise<LessonMaterialDocument[]> {
+  const snapshot = await collections.lessonMaterials().where("curriculumId", "==", curriculumId).get();
+  return snapshot.docs.map(d => d.data() as LessonMaterialDocument);
+}
+
+export async function createLessonMaterial(params: {
+  curriculumId: string;
+  lessonPlanId?: string;
+  title: string;
+  description: string;
+  materialType: MaterialType;
+  requiredPackageTier?: string;
+  materialTier?: 'standard' | 'multisensory_kit' | 'premium';
+  fileUrl: string;
+  fileName: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  isRestricted?: boolean;
+  version?: string;
+  adminUid: string;
+}): Promise<string> {
+  const id = "mat-" + Date.now().toString(36) + "-" + Math.random().toString(36).substring(2, 6);
+  const now = Timestamp.now();
+
+  const docData: LessonMaterialDocument = {
+    id,
+    curriculumId: params.curriculumId,
+    lessonPlanId: params.lessonPlanId || "",
+    title: params.title.trim(),
+    description: params.description.trim(),
+    materialType: params.materialType,
+    requiredPackageTier: params.requiredPackageTier || "standard",
+    materialTier: params.materialTier || "standard",
+    fileUrl: params.fileUrl.trim(),
+    fileName: params.fileName.trim(),
+    fileSizeBytes: Number(params.fileSizeBytes) || 0,
+    mimeType: params.mimeType || "application/pdf",
+    isRestricted: params.isRestricted ?? true,
+    accessibleCurriculumIds: [params.curriculumId],
+    downloadCount: 0,
+    version: params.version || "1.0",
+    createdByUid: params.adminUid,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await collections.lessonMaterials().doc(id).set(docData);
+
+  // Update curriculum totalMaterials
+  const mats = await getLessonMaterialsByCurriculum(params.curriculumId);
+  await collections.curriculums().doc(params.curriculumId).update({
+    totalMaterials: mats.length,
+    updatedAt: now,
+  });
+
+  return id;
+}
+
+export async function updateLessonMaterial(id: string, params: {
+  curriculumId?: string;
+  lessonPlanId?: string;
+  title?: string;
+  description?: string;
+  materialType?: MaterialType;
+  requiredPackageTier?: string;
+  materialTier?: 'standard' | 'multisensory_kit' | 'premium';
+  fileUrl?: string;
+  fileName?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+  isRestricted?: boolean;
+  version?: string;
+}): Promise<void> {
+  const ref = collections.lessonMaterials().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("Aset materi tidak ditemukan.");
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (params.curriculumId !== undefined) updateData.curriculumId = params.curriculumId;
+  if (params.lessonPlanId !== undefined) updateData.lessonPlanId = params.lessonPlanId;
+  if (params.title !== undefined) updateData.title = params.title.trim();
+  if (params.description !== undefined) updateData.description = params.description.trim();
+  if (params.materialType !== undefined) updateData.materialType = params.materialType;
+  if (params.requiredPackageTier !== undefined) updateData.requiredPackageTier = params.requiredPackageTier;
+  if (params.materialTier !== undefined) updateData.materialTier = params.materialTier;
+  if (params.fileUrl !== undefined) updateData.fileUrl = params.fileUrl.trim();
+  if (params.fileName !== undefined) updateData.fileName = params.fileName.trim();
+  if (params.fileSizeBytes !== undefined) updateData.fileSizeBytes = Number(params.fileSizeBytes);
+  if (params.mimeType !== undefined) updateData.mimeType = params.mimeType;
+  if (params.isRestricted !== undefined) updateData.isRestricted = Boolean(params.isRestricted);
+  if (params.version !== undefined) updateData.version = params.version.trim();
+
+  await ref.update(updateData);
+}
+
+export async function deleteLessonMaterial(id: string): Promise<void> {
+  const ref = collections.lessonMaterials().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) return;
+  const data = doc.data() as LessonMaterialDocument;
+
+  await ref.delete();
+
+  if (data.curriculumId) {
+    const remaining = await getLessonMaterialsByCurriculum(data.curriculumId);
+    await collections.curriculums().doc(data.curriculumId).update({
+      totalMaterials: remaining.length,
+      updatedAt: Timestamp.now(),
+    });
+  }
+}
+
+export async function incrementMaterialDownloadCount(id: string): Promise<void> {
+  await collections.lessonMaterials().doc(id).update({
+    downloadCount: FieldValue.increment(1),
+  });
 }
 
 // ==========================================
@@ -224,7 +546,7 @@ export async function getLessonMaterialsForBranch(branchId: string, curriculumId
   reason?: string;
 }> {
   const license = await getActiveBranchLicense(branchId);
-  if (!license) {
+  if (!license || license.status !== "active") {
     return {
       allowed: false,
       materials: [],
@@ -232,7 +554,7 @@ export async function getLessonMaterialsForBranch(branchId: string, curriculumId
     };
   }
 
-  if (curriculumId && !license.allowedCurriculums.includes(curriculumId)) {
+  if (curriculumId && !license.allowedCurriculums?.includes(curriculumId)) {
     return {
       allowed: false,
       materials: [],
@@ -248,10 +570,22 @@ export async function getLessonMaterialsForBranch(branchId: string, curriculumId
   const snapshot = await query.get();
   const materials = snapshot.docs.map(doc => doc.data() as LessonMaterialDocument);
 
-  // Filter materials based on package tier allowed
+  const allowedCurriculums = license.allowedCurriculums || [];
+  const allowedTiers = license.allowedMaterialTiers || ["standard"];
+
+  // Filter materials based on curriculum and tier gating
   const filtered = materials.filter(item => {
+    // If not restricted, accessible to all
     if (!item.isRestricted) return true;
-    return license.allowedCurriculums.includes(item.curriculumId);
+
+    // Check if curriculum is licensed
+    if (!allowedCurriculums.includes(item.curriculumId)) {
+      return false;
+    }
+
+    // Check material tier
+    const itemTier = item.materialTier || "standard";
+    return allowedTiers.includes(itemTier as any);
   });
 
   return { allowed: true, materials: filtered };

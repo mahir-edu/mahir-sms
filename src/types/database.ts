@@ -128,11 +128,18 @@ export interface LicenseTypeDocument {
 // ==========================================
 // Curriculum, Lesson Plans & Lesson Materials
 // ==========================================
+export type GradeLevelCategory = 
+  | 'paud_tk' 
+  | 'sd_1' | 'sd_2' | 'sd_3' | 'sd_4' | 'sd_5' | 'sd_6' 
+  | 'smp_7' | 'smp_8' | 'smp_9' 
+  | 'custom';
+
 export interface CurriculumDocument {
   id: string;
   title: string;
   subject: string;
-  gradeLevel: number;              // 1 to 6
+  gradeLevel: number;              // 0 for PAUD/TK, 1-6 for SD, 7-9 for SMP, etc.
+  gradeCategory?: string;          // e.g. "PAUD / TK", "Kelas 1 SD", "Kelas 7 SMP", "Kustom"
   version: string;
   description: string;
   isActive: boolean;
@@ -147,6 +154,7 @@ export type MethodologyStepType = 'lihat' | 'dengar' | 'lakukan' | 'catat' | 're
 
 export interface MethodologyStep {
   step: MethodologyStepType;
+  title?: string;
   instruction: string;
   durationMinutes: number;
 }
@@ -161,6 +169,7 @@ export interface LessonPlanDocument {
   materialsNeeded: string[];
   linkedMaterialIds: string[];
   createdByUid: string;
+  createdAt?: Timestamp;
   updatedAt: Timestamp;
 }
 
@@ -180,6 +189,7 @@ export interface LessonMaterialDocument {
   description: string;
   materialType: MaterialType;
   requiredPackageTier: LicensePackageTier | string;
+  materialTier?: 'standard' | 'multisensory_kit' | 'premium';
   fileUrl: string;
   fileName: string;
   fileSizeBytes: number;
@@ -187,7 +197,7 @@ export interface LessonMaterialDocument {
   
   // Licensing & Gating
   isRestricted: boolean;
-  accessibleCurriculumIds: string[];
+  accessibleCurriculumIds?: string[];
   
   downloadCount: number;
   version: string;

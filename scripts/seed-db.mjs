@@ -113,39 +113,115 @@ async function seed() {
     title: "Kurikulum Matematika Multisensori Mahir SD",
     subject: "Matematika",
     gradeLevel: 1,
+    gradeCategory: "Kelas 1 SD",
     version: "2026.1",
     description: "Kurikulum interaktif berbasis metode: Lihat, Dengar, Lakukan, Catat, dan Repetisi Bermakna.",
     isActive: true,
-    totalModules: 12,
-    totalMaterials: 36,
+    totalModules: 2,
+    totalMaterials: 2,
     createdByUid: hqAdminUid,
     createdAt: now,
     updatedAt: now,
   }, { merge: true });
   console.log("✅ Created Central Curriculum: cur-math-sd-01");
 
-  // 5. Gated Lesson Material
+  // 4b. Sample Lesson Plans / RPP Modules
+  const lessonPlan1Id = "lp-cur-math-sd-01-m01";
+  await db.collection("lesson_plans").doc(lessonPlan1Id).set({
+    id: lessonPlan1Id,
+    curriculumId: curriculumId,
+    moduleNumber: 1,
+    topicTitle: "Modul 1: Konsep Bilangan & Pola Manik Bilangan (1 - 20)",
+    methodologySteps: [
+      { step: "lihat", title: "Visualisasi Manik", instruction: "Tunjukkan kartu manik dan pola angka berwarna 1 sampai 10.", durationMinutes: 10 },
+      { step: "dengar", title: "Ritme Lagu Angka", instruction: "Ajak siswa melafalkan irama ketukan hitungan maju dan mundur bersama guru.", durationMinutes: 10 },
+      { step: "lakukan", title: "Merangkai Manik Fisik", instruction: "Siswa mengambil 10 manik dan merangkainya pada benang pemilah.", durationMinutes: 20 },
+      { step: "catat", title: "Lembar Catat Angka", instruction: "Siswa menggambar jumlah manik dan menuliskan lambang angka di buku modul.", durationMinutes: 15 },
+      { step: "repetisi", title: "Kuis Tebak Manik Cepat", instruction: "Guru menunjukkan pola acak, siswa menebak jumlah dengan kartu respons.", durationMinutes: 15 }
+    ],
+    learningObjectives: [
+      "Siswa mampu membilang 1 hingga 20 secara terurut dengan bantuan manipulatif manik",
+      "Siswa memahami konsep kuantitas konkrit sebelum representasi simbolik"
+    ],
+    materialsNeeded: ["Set Manik Plastik 20 Buah", "Tali Perangkai", "Kartu Angka Bergambar"],
+    linkedMaterialIds: ["mat-multisensory-mod1-ws", "mat-multisensory-mod1-slides"],
+    createdByUid: hqAdminUid,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  const lessonPlan2Id = "lp-cur-math-sd-01-m02";
+  await db.collection("lesson_plans").doc(lessonPlan2Id).set({
+    id: lessonPlan2Id,
+    curriculumId: curriculumId,
+    moduleNumber: 2,
+    topicTitle: "Modul 2: Penjumlahan Konkrit Melalui Balok Hubung",
+    methodologySteps: [
+      { step: "lihat", title: "Observasi Gabungan Balok", instruction: "Peragakan 3 balok biru digabung dengan 2 balok merah di meja demonstrasi.", durationMinutes: 10 },
+      { step: "dengar", title: "Penjelasan Cerita Kontekstual", instruction: "Dengarkan cerita narasi anak membeli apel dan jeruk di pasar.", durationMinutes: 10 },
+      { step: "lakukan", title: "Menghubungkan Balok", instruction: "Setiap kelompok menggabungkan balok sesuai lembar instruksi tantangan.", durationMinutes: 20 },
+      { step: "catat", title: "Notasi Matematika", instruction: "Menuliskan kalimat matematika 3 + 2 = 5 pada jurnal siswa.", durationMinutes: 15 },
+      { step: "repetisi", title: "Permainan Pasangan 10", instruction: "Cari kawan balok pelengkap 10 secepat mungkin.", durationMinutes: 15 }
+    ],
+    learningObjectives: [
+      "Siswa mampu melakukan penjumlahan hingga 10 menggunakan benda konkrit",
+      "Siswa dapat mengubah representasi fisik menjadi simbol penjumlahan (+)"
+    ],
+    materialsNeeded: ["Balok Hubung Mahir (Interlocking Cubes)", "Matras Hitung"],
+    linkedMaterialIds: [],
+    createdByUid: hqAdminUid,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  console.log("✅ Created 2 Sample Lesson Plans (RPP 5-Pilar)");
+
+  // 5. Gated Lesson Materials
   const materialId = "mat-multisensory-mod1-ws";
   await db.collection("lesson_materials").doc(materialId).set({
     id: materialId,
     curriculumId: curriculumId,
+    lessonPlanId: lessonPlan1Id,
     title: "Lembar Kerja Multisensori Modul 1: Konsep Bilangan & Manik",
     description: "Lembar kerja aktivitas manipulatif untuk membangun pemahaman konseptual bilangan 1 - 20.",
     materialType: "worksheet",
     requiredPackageTier: "standard",
+    materialTier: "standard",
     fileUrl: "https://storage.googleapis.com/mahir-sms.firebasestorage.app/materials/modul1_manik.pdf",
     fileName: "modul1_manik.pdf",
     fileSizeBytes: 2450000,
     mimeType: "application/pdf",
     isRestricted: true,
     accessibleCurriculumIds: [curriculumId],
-    downloadCount: 0,
+    downloadCount: 14,
     version: "1.0",
     createdByUid: hqAdminUid,
     createdAt: now,
     updatedAt: now,
   }, { merge: true });
-  console.log("✅ Created Gated Lesson Material: mat-multisensory-mod1-ws");
+
+  const material2Id = "mat-multisensory-mod1-slides";
+  await db.collection("lesson_materials").doc(material2Id).set({
+    id: material2Id,
+    curriculumId: curriculumId,
+    lessonPlanId: lessonPlan1Id,
+    title: "Slide Panduan Visual Guru: Modul 1 Manik Bilangan",
+    description: "Slide deck animasi visual untuk memandu sesi tatap muka dan demonstrasi manik di kelas.",
+    materialType: "slide_deck",
+    requiredPackageTier: "premium",
+    materialTier: "multisensory_kit",
+    fileUrl: "https://storage.googleapis.com/mahir-sms.firebasestorage.app/materials/modul1_slide_deck.pptx",
+    fileName: "modul1_slide_deck.pptx",
+    fileSizeBytes: 8750000,
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    isRestricted: true,
+    accessibleCurriculumIds: [curriculumId],
+    downloadCount: 8,
+    version: "1.2",
+    createdByUid: hqAdminUid,
+    createdAt: now,
+    updatedAt: now,
+  }, { merge: true });
+  console.log("✅ Created 2 Gated Lesson Materials (Worksheet & Slides)");
 
   // 6. Central Calendar Event (Teachers)
   const eventId = "evt-national-workshop-2026";

@@ -1,0 +1,219 @@
+---
+// MaterialModal.astro
+import type { CurriculumDocument, LicenseTypeDocument } from "../../types/database";
+
+interface Props {
+  curriculums: CurriculumDocument[];
+  licenseTypes?: LicenseTypeDocument[];
+  defaultCurriculumId?: string;
+}
+
+const { curriculums = [], licenseTypes = [], defaultCurriculumId = "" } = Astro.props;
+---
+
+<div id="material-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+  <div id="material-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="relative bg-white rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 z-10 max-h-[92vh] overflow-y-auto">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+        <div>
+          <h3 id="material-modal-title" class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span>📁 Unggah & Terbitkan Aset Materi</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Daftarkan modul worksheet, slide presentasi, atau alat peraga cetak ke pustaka nasional.
+          </p>
+        </div>
+        <button id="btn-close-material-modal" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Alert -->
+      <div id="material-modal-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Form -->
+      <form id="form-material" class="space-y-4">
+        <input type="hidden" name="id" id="mat-id" value="" />
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Judul Aset Materi <span class="text-rose-500">*</span>
+          </label>
+          <input 
+            type="text" 
+            name="title" 
+            id="mat-title" 
+            required 
+            placeholder="Contoh: Lembar Kerja Multisensori Modul 1: Konsep Manik" 
+            class="form-input text-xs py-2!" 
+          />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Kurikulum Induk <span class="text-rose-500">*</span>
+            </label>
+            <select name="curriculumId" id="mat-curriculum-id" class="form-input text-xs py-2!" required>
+              <option value="">-- Pilih Kurikulum --</option>
+              {curriculums.map(c => (
+                <option value={c.id} selected={c.id === defaultCurriculumId}>
+                  {c.title} ({c.gradeCategory || `Kelas ${c.gradeLevel}`})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Tipe Aset Pembelajaran <span class="text-rose-500">*</span>
+            </label>
+            <select name="materialType" id="mat-type" class="form-input text-xs py-2!" required>
+              <option value="worksheet" selected>📄 Lembar Kerja Siswa (Worksheet)</option>
+              <option value="slide_deck">🖥️ Slide Presentasi Modul</option>
+              <option value="printable_manipulative">✂️ Alat Peraga Cetak / Manipulatif</option>
+              <option value="teacher_handbook">📘 Buku Panduan Pendidik</option>
+              <option value="audio_guide">🎵 Audio Panduan Belajar</option>
+              <option value="video_tutorial">🎥 Video Tutorial Pengajaran</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Paket Lisensi Minimal <span class="text-rose-500">*</span>
+            </label>
+            <select name="requiredPackageTier" id="mat-req-package" class="form-input text-xs py-2!" required>
+              {licenseTypes && licenseTypes.length > 0 ? (
+                licenseTypes.map(lic => (
+                  <option value={lic.code} selected={lic.code === "standard"}>
+                    {lic.name}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="standard" selected>Paket Standard</option>
+                  <option value="basic">Paket Basic</option>
+                  <option value="premium">Paket Premium</option>
+                  <option value="enterprise">Paket Enterprise</option>
+                </>
+              )}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Tier Akses Konten <span class="text-rose-500">*</span>
+            </label>
+            <select name="materialTier" id="mat-tier" class="form-input text-xs py-2!" required>
+              <option value="standard" selected>Standard Content</option>
+              <option value="multisensory_kit">Multisensory Kit (Eksklusif)</option>
+              <option value="premium">Premium Master Kit</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- DUAL FILE UPLOAD MODE SWITCHER -->
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+            <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span>💾 Sumber Berkas Digital:</span>
+            </span>
+            <div class="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 text-xs">
+              <button 
+                type="button" 
+                id="btn-mode-url" 
+                class="px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors"
+              >
+                🔗 Tautan Cloud Storage / CDN
+              </button>
+              <button 
+                type="button" 
+                id="btn-mode-file" 
+                class="px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                📤 Unggah Berkas Langsung
+              </button>
+            </div>
+          </div>
+
+          <!-- Mode 1: URL / External Link Input (Default) -->
+          <div id="container-mode-url" class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">
+                URL / Link Berkas (Google Cloud, Drive, Dropbox, CDN, YouTube) <span class="text-rose-500">*</span>
+              </label>
+              <input 
+                type="url" 
+                id="input-file-url" 
+                placeholder="https://storage.googleapis.com/.../modul1.pdf" 
+                class="form-input text-xs py-2!" 
+              />
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Nama File (dengan ekstensi)</label>
+                <input type="text" id="input-url-filename" placeholder="modul1_manik.pdf" class="form-input text-xs py-1.5!" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Estimasi Ukuran File (KB/MB)</label>
+                <input type="text" id="input-url-filesize" placeholder="Contoh: 2.5 MB" class="form-input text-xs py-1.5!" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Mode 2: Direct File Upload Input -->
+          <div id="container-mode-file" class="hidden space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Berkas Lokal</label>
+              <input 
+                type="file" 
+                id="input-direct-file" 
+                class="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-800 hover:file:bg-purple-200 cursor-pointer"
+              />
+            </div>
+            <div id="direct-file-preview" class="hidden p-2.5 bg-emerald-50 rounded-lg border border-emerald-200 text-[11px] text-emerald-800 flex items-center justify-between">
+              <div>
+                <span class="font-bold" id="df-name">file.pdf</span>
+                <span class="text-[10px] text-emerald-600 ml-2" id="df-size">0 KB</span>
+              </div>
+              <span class="font-mono text-[10px] bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-900" id="df-mime">pdf</span>
+            </div>
+          </div>
+
+          <!-- Hidden final payload fields -->
+          <input type="hidden" name="fileUrl" id="final-file-url" value="" />
+          <input type="hidden" name="fileName" id="final-file-name" value="" />
+          <input type="hidden" name="fileSizeBytes" id="final-file-size-bytes" value="0" />
+          <input type="hidden" name="mimeType" id="final-mime-type" value="application/pdf" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Deskripsi Singkat / Petunjuk Pembelajaran</label>
+          <textarea 
+            name="description" 
+            id="mat-description" 
+            rows="2" 
+            placeholder="Jelaskan konten materi dan cara pemanfaatannya..." 
+            class="form-input text-xs py-2!"
+          ></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" id="btn-cancel-material" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">
+            Batal
+          </button>
+          <button type="submit" id="btn-submit-material" class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer inline-flex items-center gap-1.5">
+            <svg id="btn-material-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="btn-material-text">Terbitkan Aset Materi</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

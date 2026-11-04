@@ -1,10 +1,16 @@
 ---
 import { app } from "../../../firebase/server";
 import { getAuth } from "firebase-admin/auth";
-import { getUserProfile, getAllLessonMaterials, getAllCurriculums } from "../../../firebase/firestore";
+import { 
+  getUserProfile, 
+  getAllLessonMaterials, 
+  getAllCurriculums,
+  getAllLicenseTypes 
+} from "../../../firebase/firestore";
 import DashboardLayout from "../../../layouts/DashboardLayout.astro";
 import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
 import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
+import MaterialModal from "../../../components/dashboard/MaterialModal.astro";
 
 /* Verify user session & ensure HQ Admin role */
 const auth = getAuth(app);
@@ -32,11 +38,22 @@ if (!userProfile || userProfile.role !== "hq_admin") {
 
 const materials = await getAllLessonMaterials();
 const curriculums = await getAllCurriculums();
-const currMap = new Map(curriculums.map(c => [c.id, c.title]));
+const licenseTypes = await getAllLicenseTypes(true);
+
+const currMap = new Map(curriculums.map(c => [c.id, c]));
 
 const totalDownloads = materials.reduce((sum, m) => sum + (m.downloadCount || 0), 0);
 const worksheetsCount = materials.filter(m => m.materialType === "worksheet").length;
 const slidesCount = materials.filter(m => m.materialType === "slide_deck").length;
+const manipulativesCount = materials.filter(m => m.materialType === "printable_manipulative").length;
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return "-";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
 ---
 
 <DashboardLayout 
@@ -52,11 +69,18 @@ const slidesCount = materials.filter(m => m.materialType === "slide_deck").lengt
       { label: "Materi Berlisensi" }
     ]}
   >
-    <div slot="actions">
+    <div slot="actions" class="flex items-center gap-2">
+      <a 
+        href="/dashboard/admin/curriculum" 
+        class="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs no-underline"
+      >
+        <span>📚</span>
+        <span>Pustaka Kurikulum</span>
+      </a>
       <button 
         type="button" 
+        id="btn-open-create-material" 
         class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
-        onclick="alert('Upload materi ajar multisensori baru akan segera terhubung dengan Cloud Storage.')"
       >
         <span>+ Unggah Aset Materi</span>
       </button>
@@ -68,7 +92,7 @@ const slidesCount = materials.filter(m => m.materialType === "slide_deck").lengt
     <DataMetricCard 
       title="Total Aset Digital"
       value={materials.length}
-      subtext="Worksheet & modul"
+      subtext="Worksheet, modul & media"
       icon="📁"
       theme="indigo"
     />
@@ -80,9 +104,9 @@ const slidesCount = materials.filter(m => m.materialType === "slide_deck").lengt
       theme="emerald"
     />
     <DataMetricCard 
-      title="Slide Presentasi"
-      value={slidesCount}
-      subtext="Panduan mengajar visual"
+      title="Slide & Media Ajar"
+      value={slidesCount + manipulativesCount}
+      subtext="Slide presentasi & alat peraga"
       icon="🖥️"
       theme="sky"
     />
@@ -95,12 +119,57 @@ const slidesCount = materials.filter(m => m.materialType === "slide_deck").lengt
     />
   </div>
 
+  <!-- Search & Multi-Filter Toolbar -->
+  <div class="glass-card rounded-2xl p-4 mb-6 border border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+    <div class="relative flex-1">
+      <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">🔍</span>
+      <input 
+        type="text" 
+        id="search-material" 
+        placeholder="Cari judul materi, nama file, atau topik..." 
+        class="form-input text-xs pl-9! py-2!" 
+      />
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <select id="filter-curr" class="form-input text-xs py-2! sm:w-48">
+        <option value="">Semua Kurikulum</option>
+        {curriculums.map(c => (
+          <option value={c.id}>{c.title}</option>
+        ))}
+      </select>
+
+      <select id="filter-type" class="form-input text-xs py-2! sm:w-36">
+        <option value="">Semua Tipe</option>
+        <option value="worksheet">Lembar Kerja</option>
+        <option value="slide_deck">Slide Modul</option>
+        <option value="printable_manipulative">Alat Peraga Cetak</option>
+        <option value="teacher_handbook">Buku Panduan</option>
+        <option value="video_tutorial">Video Tutorial</option>
+        <option value="audio_guide">Audio Guide</option>
+      </select>
+
+      <select id="filter-tier" class="form-input text-xs py-2! sm:w-36">
+        <option value="">Semua Tier</option>
+        <option value="basic">Paket Basic</option>
+        <option value="standard">Paket Standard</option>
+        <option value="premium">Paket Premium</option>
+        <option value="enterprise">Paket Enterprise</option>
+      </select>
+    </div>
+  </div>
+
   <!-- Materials Table -->
   <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
     <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white">
       <div>
-        <h2 class="text-sm font-bold text-slate-900">Daftar Materi & Hak Akses Lisensi</h2>
-        <p class="text-xs text-slate-500">Materi terkunci secara otomatis bila lisensi unit tidak mencukupi.</p>
+        <h2 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <span>Katalog Aset Pembelajaran & Pembatasan Lisensi</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+            {materials.length} Aset
+          </span>
+        </h2>
+        <p class="text-xs text-slate-500">Materi terkunci secara otomatis jika lisensi cabang pemancar tidak memenuhi syarat.</p>
       </div>
     </div>
 
@@ -108,67 +177,326 @@ const slidesCount = materials.filter(m => m.materialType === "slide_deck").lengt
       <table class="w-full text-left text-xs border-collapse">
         <thead>
           <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
-            <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Judul Materi</th>
-            <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Kurikulum</th>
+            <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Judul Materi & Berkas</th>
+            <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Kurikulum Induk</th>
             <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Tipe & Format</th>
             <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Tier Lisensi Minimal</th>
+            <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Akses Konten</th>
             <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Diunduh</th>
             <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-right">Aksi</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100 bg-white">
+        <tbody class="divide-y divide-slate-100 bg-white" id="materials-table-body">
           {materials.length === 0 ? (
             <tr>
-              <td colspan="6" class="py-12 text-center text-slate-400">
+              <td colspan="7" class="py-12 text-center text-slate-400">
                 <div class="text-3xl mb-2">📁</div>
                 <p class="font-bold text-slate-700">Belum Ada Materi Terunggah</p>
-                <p class="text-[11px] mt-1">Gunakan tombol "Unggah Aset Materi" untuk menambahkan modul pertama.</p>
+                <p class="text-[11px] mt-1">Gunakan tombol "+ Unggah Aset Materi" untuk menambahkan modul pertama.</p>
               </td>
             </tr>
           ) : (
-            materials.map((mat) => (
-              <tr class="hover:bg-slate-50/80 transition-colors">
-                <td class="py-3.5 px-4 font-semibold text-slate-900">
-                  <div class="flex items-center gap-2.5">
-                    <span class="w-8 h-8 rounded-lg bg-indigo-50 text-brand-indigo flex items-center justify-center font-bold text-sm shrink-0">
-                      {mat.materialType === "slide_deck" ? "🖥️" : mat.materialType === "video_tutorial" ? "🎥" : "📄"}
-                    </span>
-                    <div>
-                      <div class="font-bold text-slate-900">{mat.title}</div>
-                      <div class="text-[11px] text-slate-500 font-normal">{mat.fileName || "dokumen.pdf"}</div>
+            materials.map((mat) => {
+              const curr = currMap.get(mat.curriculumId);
+              return (
+                <tr 
+                  class="mat-row hover:bg-slate-50/80 transition-colors"
+                  data-title={mat.title.toLowerCase()}
+                  data-filename={(mat.fileName || "").toLowerCase()}
+                  data-currid={mat.curriculumId}
+                  data-type={mat.materialType}
+                  data-tier={(mat.requiredPackageTier || "").toLowerCase()}
+                >
+                  <td class="py-3.5 px-4 font-semibold text-slate-900">
+                    <div class="flex items-center gap-2.5">
+                      <span class="w-8 h-8 rounded-lg bg-indigo-50 text-brand-indigo flex items-center justify-center font-bold text-sm shrink-0">
+                        {mat.materialType === "slide_deck" 
+                          ? "🖥️" 
+                          : mat.materialType === "video_tutorial" 
+                          ? "🎥" 
+                          : mat.materialType === "printable_manipulative"
+                          ? "✂️"
+                          : mat.materialType === "teacher_handbook"
+                          ? "📘"
+                          : mat.materialType === "audio_guide"
+                          ? "🎵"
+                          : "📄"}
+                      </span>
+                      <div>
+                        <div class="font-bold text-slate-900">{mat.title}</div>
+                        <div class="text-[11px] text-slate-500 font-normal flex items-center gap-1.5 mt-0.5">
+                          <span>{mat.fileName || "dokumen.pdf"}</span>
+                          {mat.fileSizeBytes ? <span>• {formatBytes(mat.fileSizeBytes)}</span> : null}
+                          <span class="font-mono text-[9px] bg-slate-100 px-1 rounded">v{mat.version || "1.0"}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td class="py-3.5 px-4 text-slate-600">
-                  {currMap.get(mat.curriculumId) || mat.curriculumId}
-                </td>
-                <td class="py-3.5 px-4">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
-                    {mat.materialType}
-                  </span>
-                </td>
-                <td class="py-3.5 px-4">
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border border-purple-200">
-                    Paket {mat.requiredPackageTier}
-                  </span>
-                </td>
-                <td class="py-3.5 px-4 text-slate-700 font-semibold">
-                  {mat.downloadCount || 0}x
-                </td>
-                <td class="py-3.5 px-4 text-right">
-                  <a 
-                    href={mat.fileUrl || "#"} 
-                    target="_blank"
-                    class="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors inline-block no-underline"
-                  >
-                    Pratinjau
-                  </a>
-                </td>
-              </tr>
-            ))
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-700">
+                    <div class="font-semibold">{curr ? curr.title : mat.curriculumId}</div>
+                    <div class="text-[10px] text-slate-400">{curr ? curr.gradeCategory || `Kelas ${curr.gradeLevel}` : ""}</div>
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                      {mat.materialType}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                      Paket {mat.requiredPackageTier}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      mat.materialTier === "multisensory_kit"
+                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                        : mat.materialTier === "premium"
+                        ? "bg-purple-100 text-purple-800 border border-purple-200"
+                        : "bg-slate-100 text-slate-700"
+                    }`}>
+                      {(mat.materialTier || "standard").replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 text-slate-700 font-semibold">
+                    {mat.downloadCount || 0}x
+                  </td>
+                  <td class="py-3.5 px-4 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <a 
+                        href={mat.fileUrl || "#"} 
+                        target="_blank"
+                        class="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors inline-block no-underline"
+                      >
+                        Pratinjau
+                      </a>
+                      <button 
+                        type="button" 
+                        class="btn-delete-mat text-rose-600 hover:text-rose-800 p-1 font-bold cursor-pointer"
+                        data-id={mat.id}
+                        title="Hapus Aset"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
     </div>
   </div>
+
+  <!-- Material Modal -->
+  <MaterialModal curriculums={curriculums} licenseTypes={licenseTypes} />
 </DashboardLayout>
+
+<script>
+  // Search & Filter
+  const searchInput = document.getElementById("search-material") as HTMLInputElement | null;
+  const filterCurr = document.getElementById("filter-curr") as HTMLSelectElement | null;
+  const filterType = document.getElementById("filter-type") as HTMLSelectElement | null;
+  const filterTier = document.getElementById("filter-tier") as HTMLSelectElement | null;
+  const rows = document.querySelectorAll<HTMLTableRowElement>(".mat-row");
+
+  function applyFilters() {
+    const q = searchInput?.value.toLowerCase().trim() || "";
+    const c = filterCurr?.value || "";
+    const t = filterType?.value || "";
+    const p = filterTier?.value.toLowerCase() || "";
+
+    rows.forEach(r => {
+      const title = r.dataset.title || "";
+      const fname = r.dataset.filename || "";
+      const currid = r.dataset.currid || "";
+      const type = r.dataset.type || "";
+      const tier = r.dataset.tier || "";
+
+      const matchQ = !q || title.includes(q) || fname.includes(q);
+      const matchC = !c || currid === c;
+      const matchT = !t || type === t;
+      const matchP = !p || tier.includes(p);
+
+      if (matchQ && matchC && matchT && matchP) {
+        r.style.display = "";
+      } else {
+        r.style.display = "none";
+      }
+    });
+  }
+
+  searchInput?.addEventListener("input", applyFilters);
+  filterCurr?.addEventListener("change", applyFilters);
+  filterType?.addEventListener("change", applyFilters);
+  filterTier?.addEventListener("change", applyFilters);
+
+  // Material Modal Controls
+  const modal = document.getElementById("material-modal");
+  const btnOpenCreate = document.getElementById("btn-open-create-material");
+  const btnClose = document.getElementById("btn-close-material-modal");
+  const btnCancel = document.getElementById("btn-cancel-material");
+  const backdrop = document.getElementById("material-modal-backdrop");
+  const form = document.getElementById("form-material") as HTMLFormElement | null;
+  const alertBox = document.getElementById("material-modal-alert");
+
+  const btnModeUrl = document.getElementById("btn-mode-url");
+  const btnModeFile = document.getElementById("btn-mode-file");
+  const contModeUrl = document.getElementById("container-mode-url");
+  const contModeFile = document.getElementById("container-mode-file");
+
+  const inputUrl = document.getElementById("input-file-url") as HTMLInputElement | null;
+  const inputUrlFilename = document.getElementById("input-url-filename") as HTMLInputElement | null;
+  const inputUrlFilesize = document.getElementById("input-url-filesize") as HTMLInputElement | null;
+
+  const inputDirectFile = document.getElementById("input-direct-file") as HTMLInputElement | null;
+  const directPreview = document.getElementById("direct-file-preview");
+  const dfName = document.getElementById("df-name");
+  const dfSize = document.getElementById("df-size");
+  const dfMime = document.getElementById("df-mime");
+
+  const finalUrl = document.getElementById("final-file-url") as HTMLInputElement | null;
+  const finalName = document.getElementById("final-file-name") as HTMLInputElement | null;
+  const finalSize = document.getElementById("final-file-size-bytes") as HTMLInputElement | null;
+  const finalMime = document.getElementById("final-mime-type") as HTMLInputElement | null;
+
+  let currentUploadMode = "url";
+
+  btnModeUrl?.addEventListener("click", () => {
+    currentUploadMode = "url";
+    btnModeUrl.className = "px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors";
+    btnModeFile?.setAttribute("class", "px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors");
+    contModeUrl?.classList.remove("hidden");
+    contModeFile?.classList.add("hidden");
+  });
+
+  btnModeFile?.addEventListener("click", () => {
+    currentUploadMode = "file";
+    btnModeFile.className = "px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors";
+    btnModeUrl?.setAttribute("class", "px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors");
+    contModeFile?.classList.remove("hidden");
+    contModeUrl?.classList.add("hidden");
+  });
+
+  inputDirectFile?.addEventListener("change", () => {
+    const file = inputDirectFile.files?.[0];
+    if (file) {
+      if (dfName) dfName.textContent = file.name;
+      if (dfSize) dfSize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+      if (dfMime) dfMime.textContent = file.type || "file";
+      directPreview?.classList.remove("hidden");
+
+      if (finalName) finalName.value = file.name;
+      if (finalSize) finalSize.value = String(file.size);
+      if (finalMime) finalMime.value = file.type || "application/octet-stream";
+      if (finalUrl) finalUrl.value = `https://storage.googleapis.com/mahir-sms.firebasestorage.app/materials/${encodeURIComponent(file.name)}`;
+    }
+  });
+
+  function openCreateModal() {
+    form?.reset();
+    directPreview?.classList.add("hidden");
+    if (alertBox) alertBox.classList.add("hidden");
+    modal?.classList.remove("hidden");
+  }
+
+  function closeModal() {
+    modal?.classList.add("hidden");
+  }
+
+  btnOpenCreate?.addEventListener("click", openCreateModal);
+  btnClose?.addEventListener("click", closeModal);
+  btnCancel?.addEventListener("click", closeModal);
+  backdrop?.addEventListener("click", closeModal);
+
+  // Form Submit
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-material") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-material-spinner");
+
+    if (currentUploadMode === "url") {
+      const url = inputUrl?.value.trim() || "";
+      if (!url) {
+        alert("Harap masukkan URL tautan berkas.");
+        return;
+      }
+      if (finalUrl) finalUrl.value = url;
+      if (finalName) finalName.value = inputUrlFilename?.value.trim() || url.split("/").pop() || "dokumen.pdf";
+      if (finalSize) {
+        const rawSize = inputUrlFilesize?.value.trim().toLowerCase() || "";
+        let bytes = 1048576; // 1MB default
+        if (rawSize.includes("mb")) bytes = Math.round(parseFloat(rawSize) * 1048576);
+        else if (rawSize.includes("kb")) bytes = Math.round(parseFloat(rawSize) * 1024);
+        finalSize.value = String(bytes);
+      }
+    }
+
+    if (!finalUrl?.value) {
+      alert("Harap tentukan berkas materi atau URL terlebih dahulu.");
+      return;
+    }
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+
+    const fd = new FormData(form);
+    const payload = {
+      title: fd.get("title")?.toString()?.trim(),
+      curriculumId: fd.get("curriculumId")?.toString(),
+      materialType: fd.get("materialType")?.toString(),
+      requiredPackageTier: fd.get("requiredPackageTier")?.toString(),
+      materialTier: fd.get("materialTier")?.toString(),
+      fileUrl: finalUrl.value,
+      fileName: finalName?.value || "dokumen.pdf",
+      fileSizeBytes: Number(finalSize?.value) || 0,
+      mimeType: finalMime?.value || "application/pdf",
+      description: fd.get("description")?.toString()?.trim(),
+    };
+
+    try {
+      const res = await fetch("/api/admin/materials/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menerbitkan materi.");
+
+      alert(data.message || "Aset materi berhasil diterbitkan!");
+      closeModal();
+      window.location.reload();
+    } catch (err: any) {
+      if (alertBox) {
+        alertBox.textContent = err.message || "Terjadi kesalahan.";
+        alertBox.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        alertBox.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+    }
+  });
+
+  // Delete Action
+  document.querySelectorAll<HTMLButtonElement>(".btn-delete-mat").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (!confirm("Hapus aset materi ini secara permanen?")) return;
+
+      try {
+        const res = await fetch("/api/admin/materials/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal menghapus materi.");
+        alert(data.message);
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message || "Terjadi kesalahan.");
+      }
+    });
+  });
+</script>

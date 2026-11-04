@@ -1,0 +1,929 @@
+---
+import { app } from "../../../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getCurriculumById, 
+  getLessonPlansForCurriculum, 
+  getLessonMaterialsByCurriculum,
+  getAllCurriculums,
+  getAllLicenseTypes
+} from "../../../../firebase/firestore";
+import DashboardLayout from "../../../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../../../components/dashboard/DataMetricCard.astro";
+import LessonPlanModal from "../../../../components/dashboard/LessonPlanModal.astro";
+import MaterialModal from "../../../../components/dashboard/MaterialModal.astro";
+import CurriculumModal from "../../../../components/dashboard/CurriculumModal.astro";
+
+/* Verify user session & ensure HQ Admin role */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+if (!userProfile || userProfile.role !== "hq_admin") {
+  return Astro.redirect("/dashboard");
+}
+
+const curriculumId = Astro.params.id;
+if (!curriculumId) {
+  return Astro.redirect("/dashboard/admin/curriculum");
+}
+
+const curriculum = await getCurriculumById(curriculumId);
+if (!curriculum) {
+  return Astro.redirect("/dashboard/admin/curriculum");
+}
+
+const lessonPlans = await getLessonPlansForCurriculum(curriculumId);
+const materials = await getLessonMaterialsByCurriculum(curriculumId);
+const allCurriculums = await getAllCurriculums();
+const licenseTypes = await getAllLicenseTypes(true);
+
+// Calculate totals
+const totalModules = lessonPlans.length;
+const totalMaterials = materials.length;
+
+let totalMinutes = 0;
+lessonPlans.forEach(plan => {
+  if (Array.isArray(plan.methodologySteps)) {
+    plan.methodologySteps.forEach(s => {
+      totalMinutes += Number(s.durationMinutes) || 0;
+    });
+  }
+});
+
+const avgDurationPerModule = totalModules > 0 ? Math.round(totalMinutes / totalModules) : 0;
+---
+
+<DashboardLayout 
+  title={`${curriculum.title} | Silabus & Modul`} 
+  description="Detail silabus kurikulum dan modul pengajaran 5-pilar multisensori"
+  userProfile={userProfile}
+>
+  <DashboardPageHeader 
+    title={curriculum.title}
+    description={`Mata Pelajaran: ${curriculum.subject} • ${curriculum.gradeCategory || `Kelas ${curriculum.gradeLevel} SD`} • Versi: v${curriculum.version}`}
+    breadcrumbs={[
+      { label: "Central HQ Admin" },
+      { label: "Pustaka Kurikulum", href: "/dashboard/admin/curriculum" },
+      { label: curriculum.title }
+    ]}
+  >
+    <div slot="actions" class="flex items-center gap-2">
+      <button 
+        type="button" 
+        id="btn-edit-curr-info" 
+        class="btn-outline text-xs py-2! px-3.5! font-bold cursor-pointer"
+        data-curr={JSON.stringify(curriculum)}
+      >
+        Edit Info
+      </button>
+      <button 
+        type="button" 
+        id="btn-open-create-material" 
+        class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+      >
+        <span>📁 + Unggah Materi</span>
+      </button>
+      <button 
+        type="button" 
+        id="btn-open-create-lp" 
+        class="btn-primary text-xs py-2! px-4! font-bold cursor-pointer flex items-center gap-1.5"
+      >
+        <span>📝 + Tambah Modul RPP</span>
+      </button>
+    </div>
+  </DashboardPageHeader>
+
+  <!-- Metrics Grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <DataMetricCard 
+      title="Total Modul RPP"
+      value={totalModules}
+      subtext="Modul silabus terbit"
+      icon="📝"
+      theme="indigo"
+    />
+    <DataMetricCard 
+      title="Total Jam Ajar"
+      value={`${Math.round(totalMinutes / 60)} Jam`}
+      subtext={`Kumulatif ${totalMinutes} menit tatap muka`}
+      icon="⏱️"
+      theme="emerald"
+    />
+    <DataMetricCard 
+      title="Rata-rata Durasi"
+      value={`${avgDurationPerModule} Menit`}
+      subtext="Alokasi waktu per modul"
+      icon="⌛"
+      theme="sky"
+    />
+    <DataMetricCard 
+      title="Aset Materi Terkait"
+      value={totalMaterials}
+      subtext="Lembar kerja & media peraga"
+      icon="📁"
+      theme="amber"
+    />
+  </div>
+
+  <!-- Curriculum Overview Card -->
+  <div class="glass-card rounded-2xl p-5 mb-8 border border-slate-200">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Fokus Silabus & Gambaran Umum Pembelajaran:</h3>
+      <span class={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+        curriculum.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
+      }`}>
+        {curriculum.isActive !== false ? "● Status Aktif" : "○ Nonaktif"}
+      </span>
+    </div>
+    <p class="text-xs text-slate-700 leading-relaxed max-w-4xl mb-4">
+      {curriculum.description || "Kurikulum master terintegrasi dengan metodologi 5-pilar multisensori Mahir Edu."}
+    </p>
+
+    <!-- 5-Pillar Legend Strip -->
+    <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+      <span class="text-[11px] font-bold text-slate-500">Pilar Metodologi:</span>
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+        👁️ 1. Lihat (Visual)
+      </span>
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        👂 2. Dengar (Auditori)
+      </span>
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+        🤲 3. Lakukan (Kinestetik)
+      </span>
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+        📝 4. Catat (Notasi)
+      </span>
+      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+        🔁 5. Repetisi Bermakna
+      </span>
+    </div>
+  </div>
+
+  <!-- Tabbed Content Section -->
+  <div class="space-y-6">
+    <!-- Tabs Header -->
+    <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <button 
+        type="button" 
+        id="tab-btn-modules" 
+        class="tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors cursor-pointer flex items-center gap-1.5"
+      >
+        <span>📝 Silabus Modul & RPP 5-Pilar</span>
+        <span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-200/80 text-purple-900 font-extrabold">{totalModules}</span>
+      </button>
+      <button 
+        type="button" 
+        id="tab-btn-materials" 
+        class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"
+      >
+        <span>📁 Lembar Kerja & Media Terhubung</span>
+        <span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700 font-bold">{totalMaterials}</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: Modul & RPP 5-Pilar -->
+    <div id="tab-pane-modules" class="space-y-4">
+      {lessonPlans.length === 0 ? (
+        <div class="glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
+          <div class="text-4xl mb-2">📝</div>
+          <p class="font-bold text-slate-700 text-sm">Belum Ada Modul RPP Terdaftar</p>
+          <p class="text-xs mt-1 max-w-md mx-auto">
+            Mulailah menyusun RPP terstruktur dengan metode 5-pilar menggunakan tombol "+ Tambah Modul RPP".
+          </p>
+        </div>
+      ) : (
+        lessonPlans.map((plan) => {
+          let planMinutes = 0;
+          if (Array.isArray(plan.methodologySteps)) {
+            plan.methodologySteps.forEach(s => planMinutes += Number(s.durationMinutes) || 0);
+          }
+
+          const stepMap = new Map();
+          if (Array.isArray(plan.methodologySteps)) {
+            plan.methodologySteps.forEach(s => stepMap.set(s.step, s));
+          }
+
+          const sLihat = stepMap.get("lihat");
+          const sDengar = stepMap.get("dengar");
+          const sLakukan = stepMap.get("lakukan");
+          const sCatat = stepMap.get("catat");
+          const sRepetisi = stepMap.get("repetisi");
+
+          return (
+            <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+              <!-- Module Header Bar -->
+              <div class="p-4 sm:p-5 bg-white border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <span class="w-10 h-10 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center font-extrabold text-sm shrink-0">
+                    M{plan.moduleNumber}
+                  </span>
+                  <div>
+                    <h4 class="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                      {plan.topicTitle}
+                    </h4>
+                    <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                      <span class="font-semibold text-slate-700">⏱️ Alokasi: {planMinutes} Menit</span>
+                      <span>•</span>
+                      <span>{plan.learningObjectives?.length || 0} Tujuan Pembelajaran</span>
+                      <span>•</span>
+                      <span>{plan.materialsNeeded?.length || 0} Alat Manipulatif</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 self-end sm:self-center">
+                  <button 
+                    type="button" 
+                    class="btn-edit-lp px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 cursor-pointer"
+                    data-plan={JSON.stringify(plan)}
+                  >
+                    Edit Modul
+                  </button>
+                  <button 
+                    type="button" 
+                    class="btn-delete-lp px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 cursor-pointer"
+                    data-id={plan.id}
+                    data-title={plan.topicTitle}
+                  >
+                    Hapus
+                  </button>
+                </div>
+              </div>
+
+              <!-- Module Details Body -->
+              <div class="p-4 sm:p-5 bg-slate-50/50 space-y-4 text-xs">
+                <!-- Objectives & Manipulatives Strip -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {plan.learningObjectives && plan.learningObjectives.length > 0 ? (
+                    <div class="p-3 bg-white rounded-xl border border-slate-200">
+                      <div class="font-bold text-slate-800 text-[11px] uppercase tracking-wider mb-1.5">
+                        🎯 Tujuan Pembelajaran:
+                      </div>
+                      <ul class="list-disc list-inside space-y-0.5 text-slate-600 text-xs">
+                        {plan.learningObjectives.map(obj => (
+                          <li>{obj}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {plan.materialsNeeded && plan.materialsNeeded.length > 0 ? (
+                    <div class="p-3 bg-white rounded-xl border border-slate-200">
+                      <div class="font-bold text-slate-800 text-[11px] uppercase tracking-wider mb-1.5">
+                        🧩 Alat Peraga & Manipulatif:
+                      </div>
+                      <div class="flex flex-wrap gap-1.5">
+                        {plan.materialsNeeded.map(mat => (
+                          <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700">
+                            {mat}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <!-- 5-Pillar Step Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+                  <!-- LIHAT -->
+                  <div class="p-3 rounded-xl bg-sky-50/70 border border-sky-200/80 flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-sky-900">👁️ 1. LIHAT</span>
+                        <span class="text-[10px] font-bold text-sky-700 bg-sky-100 px-1.5 py-0.2 rounded">{sLihat?.durationMinutes || 10}m</span>
+                      </div>
+                      <div class="font-bold text-slate-900 text-xs mb-1">{sLihat?.title || "Visualisasi"}</div>
+                      <p class="text-[11px] text-slate-600 leading-relaxed">{sLihat?.instruction || "-"}</p>
+                    </div>
+                  </div>
+
+                  <!-- DENGAR -->
+                  <div class="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-amber-900">👂 2. DENGAR</span>
+                        <span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">{sDengar?.durationMinutes || 10}m</span>
+                      </div>
+                      <div class="font-bold text-slate-900 text-xs mb-1">{sDengar?.title || "Auditori"}</div>
+                      <p class="text-[11px] text-slate-600 leading-relaxed">{sDengar?.instruction || "-"}</p>
+                    </div>
+                  </div>
+
+                  <!-- LAKUKAN -->
+                  <div class="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-emerald-900">🤲 3. LAKUKAN</span>
+                        <span class="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">{sLakukan?.durationMinutes || 20}m</span>
+                      </div>
+                      <div class="font-bold text-slate-900 text-xs mb-1">{sLakukan?.title || "Kinestetik"}</div>
+                      <p class="text-[11px] text-slate-600 leading-relaxed">{sLakukan?.instruction || "-"}</p>
+                    </div>
+                  </div>
+
+                  <!-- CATAT -->
+                  <div class="p-3 rounded-xl bg-purple-50/70 border border-purple-200/80 flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-purple-900">📝 4. CATAT</span>
+                        <span class="text-[10px] font-bold text-purple-700 bg-purple-100 px-1.5 py-0.2 rounded">{sCatat?.durationMinutes || 15}m</span>
+                      </div>
+                      <div class="font-bold text-slate-900 text-xs mb-1">{sCatat?.title || "Notasi"}</div>
+                      <p class="text-[11px] text-slate-600 leading-relaxed">{sCatat?.instruction || "-"}</p>
+                    </div>
+                  </div>
+
+                  <!-- REPETISI -->
+                  <div class="p-3 rounded-xl bg-rose-50/70 border border-rose-200/80 flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-rose-900">🔁 5. REPETISI</span>
+                        <span class="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded">{sRepetisi?.durationMinutes || 15}m</span>
+                      </div>
+                      <div class="font-bold text-slate-900 text-xs mb-1">{sRepetisi?.title || "Penguatan"}</div>
+                      <p class="text-[11px] text-slate-600 leading-relaxed">{sRepetisi?.instruction || "-"}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    <!-- TAB 2: Lembar Kerja & Media Terhubung -->
+    <div id="tab-pane-materials" class="hidden space-y-4">
+      {materials.length === 0 ? (
+        <div class="glass-card p-12 text-center text-slate-400 rounded-2xl border border-slate-200">
+          <div class="text-4xl mb-2">📁</div>
+          <p class="font-bold text-slate-700 text-sm">Belum Ada Aset Materi untuk Kurikulum Ini</p>
+          <p class="text-xs mt-1">Gunakan tombol "+ Unggah Materi" untuk menautkan worksheet atau slide.</p>
+        </div>
+      ) : (
+        <div class="glass-card rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+                  <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Judul Materi</th>
+                  <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Tipe Format</th>
+                  <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Tier Lisensi Minimal</th>
+                  <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px]">Diunduh</th>
+                  <th class="py-3 px-4 font-bold uppercase tracking-wider text-[10px] text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 bg-white">
+                {materials.map((mat) => (
+                  <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-3.5 px-4 font-semibold text-slate-900">
+                      <div class="flex items-center gap-2.5">
+                        <span class="w-8 h-8 rounded-lg bg-indigo-50 text-brand-indigo flex items-center justify-center font-bold text-sm shrink-0">
+                          {mat.materialType === "slide_deck" ? "🖥️" : mat.materialType === "video_tutorial" ? "🎥" : "📄"}
+                        </span>
+                        <div>
+                          <div class="font-bold text-slate-900">{mat.title}</div>
+                          <div class="text-[11px] text-slate-500 font-normal">{mat.fileName || "berkas.pdf"}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                        {mat.materialType}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                        Paket {mat.requiredPackageTier}
+                      </span>
+                    </td>
+                    <td class="py-3.5 px-4 text-slate-700 font-semibold">
+                      {mat.downloadCount || 0}x
+                    </td>
+                    <td class="py-3.5 px-4 text-right">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <a 
+                          href={mat.fileUrl || "#"} 
+                          target="_blank"
+                          class="px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors inline-block no-underline"
+                        >
+                          Pratinjau
+                        </a>
+                        <button 
+                          type="button" 
+                          class="btn-delete-mat text-rose-600 hover:text-rose-800 p-1 font-bold cursor-pointer"
+                          data-id={mat.id}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <LessonPlanModal />
+  <MaterialModal curriculums={allCurriculums} licenseTypes={licenseTypes} defaultCurriculumId={curriculum.id} />
+  <CurriculumModal />
+</DashboardLayout>
+
+<script>
+  // Tab Switching
+  const btnTabModules = document.getElementById("tab-btn-modules");
+  const btnTabMaterials = document.getElementById("tab-btn-materials");
+  const paneModules = document.getElementById("tab-pane-modules");
+  const paneMaterials = document.getElementById("tab-pane-materials");
+
+  btnTabModules?.addEventListener("click", () => {
+    btnTabModules.className = "tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors cursor-pointer flex items-center gap-1.5";
+    btnTabMaterials?.setAttribute("class", "tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5");
+    paneModules?.classList.remove("hidden");
+    paneMaterials?.classList.add("hidden");
+  });
+
+  btnTabMaterials?.addEventListener("click", () => {
+    btnTabMaterials.className = "tab-btn px-4 py-2 rounded-xl text-xs font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors cursor-pointer flex items-center gap-1.5";
+    btnTabModules?.setAttribute("class", "tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5");
+    paneMaterials?.classList.remove("hidden");
+    paneModules?.classList.add("hidden");
+  });
+
+  // Current curriculum ID
+  const pathParts = window.location.pathname.split("/");
+  const currentCurriculumId = pathParts[pathParts.length - 1];
+
+  // Lesson Plan Modal Controls
+  const lpModal = document.getElementById("lesson-plan-modal");
+  const btnOpenCreateLp = document.getElementById("btn-open-create-lp");
+  const btnCloseLp = document.getElementById("btn-close-lp-modal");
+  const btnCancelLp = document.getElementById("btn-cancel-lp");
+  const lpBackdrop = document.getElementById("lesson-plan-modal-backdrop");
+  const formLp = document.getElementById("form-lesson-plan") as HTMLFormElement | null;
+  const lpAlert = document.getElementById("lp-modal-alert");
+  const lpModalTitle = document.getElementById("lesson-plan-modal-title");
+  const lpSubmitText = document.getElementById("btn-lp-text");
+
+  const inputLpCurrId = document.getElementById("lp-curriculum-id") as HTMLInputElement | null;
+  const inputLpId = document.getElementById("lp-id") as HTMLInputElement | null;
+  const inputLpModuleNumber = document.getElementById("lp-module-number") as HTMLInputElement | null;
+  const inputLpTopic = document.getElementById("lp-topic-title") as HTMLInputElement | null;
+  const inputLpObjectives = document.getElementById("lp-learning-objectives") as HTMLTextAreaElement | null;
+  const inputLpMaterials = document.getElementById("lp-materials-needed") as HTMLTextAreaElement | null;
+
+  // Step elements
+  const sLihatDur = document.getElementById("step-lihat-dur") as HTMLInputElement | null;
+  const sLihatTitle = document.getElementById("step-lihat-title") as HTMLInputElement | null;
+  const sLihatInst = document.getElementById("step-lihat-inst") as HTMLTextAreaElement | null;
+
+  const sDengarDur = document.getElementById("step-dengar-dur") as HTMLInputElement | null;
+  const sDengarTitle = document.getElementById("step-dengar-title") as HTMLInputElement | null;
+  const sDengarInst = document.getElementById("step-dengar-inst") as HTMLTextAreaElement | null;
+
+  const sLakukanDur = document.getElementById("step-lakukan-dur") as HTMLInputElement | null;
+  const sLakukanTitle = document.getElementById("step-lakukan-title") as HTMLInputElement | null;
+  const sLakukanInst = document.getElementById("step-lakukan-inst") as HTMLTextAreaElement | null;
+
+  const sCatatDur = document.getElementById("step-catat-dur") as HTMLInputElement | null;
+  const sCatatTitle = document.getElementById("step-catat-title") as HTMLInputElement | null;
+  const sCatatInst = document.getElementById("step-catat-inst") as HTMLTextAreaElement | null;
+
+  const sRepetisiDur = document.getElementById("step-repetisi-dur") as HTMLInputElement | null;
+  const sRepetisiTitle = document.getElementById("step-repetisi-title") as HTMLInputElement | null;
+  const sRepetisiInst = document.getElementById("step-repetisi-inst") as HTMLTextAreaElement | null;
+
+  function openCreateLp() {
+    formLp?.reset();
+    if (inputLpCurrId) inputLpCurrId.value = currentCurriculumId;
+    if (inputLpId) inputLpId.value = "";
+    if (lpModalTitle) lpModalTitle.innerHTML = "<span>📝 Tambah Modul RPP 5-Pilar</span>";
+    if (lpSubmitText) lpSubmitText.textContent = "Simpan Modul RPP";
+    if (lpAlert) lpAlert.classList.add("hidden");
+    lpModal?.classList.remove("hidden");
+  }
+
+  function openEditLp(plan: any) {
+    if (!plan) return;
+    if (inputLpCurrId) inputLpCurrId.value = plan.curriculumId || currentCurriculumId;
+    if (inputLpId) inputLpId.value = plan.id;
+    if (inputLpModuleNumber) inputLpModuleNumber.value = String(plan.moduleNumber || 1);
+    if (inputLpTopic) inputLpTopic.value = plan.topicTitle || "";
+    if (inputLpObjectives) inputLpObjectives.value = (plan.learningObjectives || []).join("\n");
+    if (inputLpMaterials) inputLpMaterials.value = (plan.materialsNeeded || []).join("\n");
+
+    const steps = plan.methodologySteps || [];
+    const stepMap = new Map(steps.map((s: any) => [s.step, s]));
+
+    const l = stepMap.get("lihat") as any;
+    if (sLihatDur && l) sLihatDur.value = String(l.durationMinutes || 10);
+    if (sLihatTitle && l) sLihatTitle.value = l.title || "";
+    if (sLihatInst && l) sLihatInst.value = l.instruction || "";
+
+    const d = stepMap.get("dengar") as any;
+    if (sDengarDur && d) sDengarDur.value = String(d.durationMinutes || 10);
+    if (sDengarTitle && d) sDengarTitle.value = d.title || "";
+    if (sDengarInst && d) sDengarInst.value = d.instruction || "";
+
+    const k = stepMap.get("lakukan") as any;
+    if (sLakukanDur && k) sLakukanDur.value = String(k.durationMinutes || 20);
+    if (sLakukanTitle && k) sLakukanTitle.value = k.title || "";
+    if (sLakukanInst && k) sLakukanInst.value = k.instruction || "";
+
+    const c = stepMap.get("catat") as any;
+    if (sCatatDur && c) sCatatDur.value = String(c.durationMinutes || 15);
+    if (sCatatTitle && c) sCatatTitle.value = c.title || "";
+    if (sCatatInst && c) sCatatInst.value = c.instruction || "";
+
+    const r = stepMap.get("repetisi") as any;
+    if (sRepetisiDur && r) sRepetisiDur.value = String(r.durationMinutes || 15);
+    if (sRepetisiTitle && r) sRepetisiTitle.value = r.title || "";
+    if (sRepetisiInst && r) sRepetisiInst.value = r.instruction || "";
+
+    if (lpModalTitle) lpModalTitle.innerHTML = "<span>✏️ Edit Modul RPP</span>";
+    if (lpSubmitText) lpSubmitText.textContent = "Simpan Perubahan Modul";
+    if (lpAlert) lpAlert.classList.add("hidden");
+    lpModal?.classList.remove("hidden");
+  }
+
+  function closeLpModal() {
+    lpModal?.classList.add("hidden");
+  }
+
+  btnOpenCreateLp?.addEventListener("click", openCreateLp);
+  btnCloseLp?.addEventListener("click", closeLpModal);
+  btnCancelLp?.addEventListener("click", closeLpModal);
+  lpBackdrop?.addEventListener("click", closeLpModal);
+
+  document.querySelectorAll<HTMLButtonElement>(".btn-edit-lp").forEach(btn => {
+    btn.addEventListener("click", () => {
+      try {
+        const plan = JSON.parse(btn.dataset.plan || "{}");
+        openEditLp(plan);
+      } catch (err) {
+        console.error(err);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".btn-delete-lp").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const title = btn.dataset.title;
+      if (!confirm(`Hapus modul "${title}"?`)) return;
+
+      try {
+        const res = await fetch("/api/admin/curriculum/modules/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal menghapus modul.");
+        alert(data.message);
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message || "Terjadi kesalahan.");
+      }
+    });
+  });
+
+  formLp?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-lp") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-lp-spinner");
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+
+    const fd = new FormData(formLp);
+    const planId = fd.get("id")?.toString();
+    const isEdit = Boolean(planId);
+
+    const methodologySteps = [
+      { step: "lihat", title: sLihatTitle?.value.trim() || "Pilar Lihat", instruction: sLihatInst?.value.trim() || "", durationMinutes: Number(sLihatDur?.value) || 10 },
+      { step: "dengar", title: sDengarTitle?.value.trim() || "Pilar Dengar", instruction: sDengarInst?.value.trim() || "", durationMinutes: Number(sDengarDur?.value) || 10 },
+      { step: "lakukan", title: sLakukanTitle?.value.trim() || "Pilar Lakukan", instruction: sLakukanInst?.value.trim() || "", durationMinutes: Number(sLakukanDur?.value) || 20 },
+      { step: "catat", title: sCatatTitle?.value.trim() || "Pilar Catat", instruction: sCatatInst?.value.trim() || "", durationMinutes: Number(sCatatDur?.value) || 15 },
+      { step: "repetisi", title: sRepetisiTitle?.value.trim() || "Pilar Repetisi", instruction: sRepetisiInst?.value.trim() || "", durationMinutes: Number(sRepetisiDur?.value) || 15 },
+    ];
+
+    const learningObjectives = (inputLpObjectives?.value || "")
+      .split("\n")
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const materialsNeeded = (inputLpMaterials?.value || "")
+      .split("\n")
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const payload = {
+      id: planId,
+      curriculumId: currentCurriculumId,
+      moduleNumber: Number(inputLpModuleNumber?.value) || 1,
+      topicTitle: inputLpTopic?.value.trim(),
+      methodologySteps,
+      learningObjectives,
+      materialsNeeded,
+    };
+
+    const endpoint = isEdit ? "/api/admin/curriculum/modules/update" : "/api/admin/curriculum/modules/create";
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan modul.");
+
+      alert(data.message || "Modul RPP berhasil disimpan!");
+      closeLpModal();
+      window.location.reload();
+    } catch (err: any) {
+      if (lpAlert) {
+        lpAlert.textContent = err.message || "Terjadi kesalahan.";
+        lpAlert.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        lpAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+    }
+  });
+
+  // Material Modal Trigger & Dual Mode Logic
+  const matModal = document.getElementById("material-modal");
+  const btnOpenCreateMat = document.getElementById("btn-open-create-material");
+  const btnCloseMat = document.getElementById("btn-close-material-modal");
+  const btnCancelMat = document.getElementById("btn-cancel-material");
+  const matBackdrop = document.getElementById("material-modal-backdrop");
+  const formMat = document.getElementById("form-material") as HTMLFormElement | null;
+  const matAlert = document.getElementById("material-modal-alert");
+
+  const btnModeUrl = document.getElementById("btn-mode-url");
+  const btnModeFile = document.getElementById("btn-mode-file");
+  const contModeUrl = document.getElementById("container-mode-url");
+  const contModeFile = document.getElementById("container-mode-file");
+
+  const inputUrl = document.getElementById("input-file-url") as HTMLInputElement | null;
+  const inputUrlFilename = document.getElementById("input-url-filename") as HTMLInputElement | null;
+  const inputUrlFilesize = document.getElementById("input-url-filesize") as HTMLInputElement | null;
+
+  const inputDirectFile = document.getElementById("input-direct-file") as HTMLInputElement | null;
+  const directPreview = document.getElementById("direct-file-preview");
+  const dfName = document.getElementById("df-name");
+  const dfSize = document.getElementById("df-size");
+  const dfMime = document.getElementById("df-mime");
+
+  const finalUrl = document.getElementById("final-file-url") as HTMLInputElement | null;
+  const finalName = document.getElementById("final-file-name") as HTMLInputElement | null;
+  const finalSize = document.getElementById("final-file-size-bytes") as HTMLInputElement | null;
+  const finalMime = document.getElementById("final-mime-type") as HTMLInputElement | null;
+
+  let currentUploadMode = "url";
+
+  btnModeUrl?.addEventListener("click", () => {
+    currentUploadMode = "url";
+    btnModeUrl.className = "px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors";
+    btnModeFile?.setAttribute("class", "px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors");
+    contModeUrl?.classList.remove("hidden");
+    contModeFile?.classList.add("hidden");
+  });
+
+  btnModeFile?.addEventListener("click", () => {
+    currentUploadMode = "file";
+    btnModeFile.className = "px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 transition-colors";
+    btnModeUrl?.setAttribute("class", "px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:text-slate-900 transition-colors");
+    contModeFile?.classList.remove("hidden");
+    contModeUrl?.classList.add("hidden");
+  });
+
+  inputDirectFile?.addEventListener("change", () => {
+    const file = inputDirectFile.files?.[0];
+    if (file) {
+      if (dfName) dfName.textContent = file.name;
+      if (dfSize) dfSize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+      if (dfMime) dfMime.textContent = file.type || "file";
+      directPreview?.classList.remove("hidden");
+
+      if (finalName) finalName.value = file.name;
+      if (finalSize) finalSize.value = String(file.size);
+      if (finalMime) finalMime.value = file.type || "application/octet-stream";
+      // In this environment, simulate stored URL based on file name
+      if (finalUrl) finalUrl.value = `https://storage.googleapis.com/mahir-sms.firebasestorage.app/materials/${encodeURIComponent(file.name)}`;
+    }
+  });
+
+  function openCreateMat() {
+    formMat?.reset();
+    directPreview?.classList.add("hidden");
+    const matCurrSelect = document.getElementById("mat-curriculum-id") as HTMLSelectElement | null;
+    if (matCurrSelect) matCurrSelect.value = currentCurriculumId;
+    if (matAlert) matAlert.classList.add("hidden");
+    matModal?.classList.remove("hidden");
+  }
+
+  btnOpenCreateMat?.addEventListener("click", openCreateMat);
+  btnCloseMat?.addEventListener("click", () => matModal?.classList.add("hidden"));
+  btnCancelMat?.addEventListener("click", () => matModal?.classList.add("hidden"));
+  matBackdrop?.addEventListener("click", () => matModal?.classList.add("hidden"));
+
+  formMat?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-material") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-material-spinner");
+
+    if (currentUploadMode === "url") {
+      const url = inputUrl?.value.trim() || "";
+      if (!url) {
+        alert("Harap masukkan URL tautan berkas.");
+        return;
+      }
+      if (finalUrl) finalUrl.value = url;
+      if (finalName) finalName.value = inputUrlFilename?.value.trim() || url.split("/").pop() || "dokumen.pdf";
+      if (finalSize) {
+        const rawSize = inputUrlFilesize?.value.trim().toLowerCase() || "";
+        let bytes = 1048576; // default 1MB
+        if (rawSize.includes("mb")) bytes = Math.round(parseFloat(rawSize) * 1048576);
+        else if (rawSize.includes("kb")) bytes = Math.round(parseFloat(rawSize) * 1024);
+        finalSize.value = String(bytes);
+      }
+    }
+
+    if (!finalUrl?.value) {
+      alert("Harap tentukan berkas materi atau URL terlebih dahulu.");
+      return;
+    }
+
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+
+    const fd = new FormData(formMat);
+    const payload = {
+      title: fd.get("title")?.toString()?.trim(),
+      curriculumId: fd.get("curriculumId")?.toString(),
+      materialType: fd.get("materialType")?.toString(),
+      requiredPackageTier: fd.get("requiredPackageTier")?.toString(),
+      materialTier: fd.get("materialTier")?.toString(),
+      fileUrl: finalUrl.value,
+      fileName: finalName?.value || "dokumen.pdf",
+      fileSizeBytes: Number(finalSize?.value) || 0,
+      mimeType: finalMime?.value || "application/pdf",
+      description: fd.get("description")?.toString()?.trim(),
+    };
+
+    try {
+      const res = await fetch("/api/admin/materials/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menerbitkan materi.");
+
+      alert(data.message || "Aset materi berhasil diterbitkan!");
+      matModal?.classList.add("hidden");
+      window.location.reload();
+    } catch (err: any) {
+      if (matAlert) {
+        matAlert.textContent = err.message || "Terjadi kesalahan.";
+        matAlert.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        matAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+    }
+  });
+
+  // Material Delete Handler
+  document.querySelectorAll<HTMLButtonElement>(".btn-delete-mat").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (!confirm("Hapus aset materi ini dari kurikulum?")) return;
+
+      try {
+        const res = await fetch("/api/admin/materials/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal menghapus materi.");
+        alert(data.message);
+        window.location.reload();
+      } catch (err: any) {
+        alert(err.message || "Terjadi kesalahan.");
+      }
+    });
+  });
+
+  // Edit Curriculum Info Trigger
+  const btnEditCurrInfo = document.getElementById("btn-edit-curr-info");
+  const currModal = document.getElementById("curriculum-modal");
+  const currForm = document.getElementById("form-curriculum") as HTMLFormElement | null;
+  const currIdInput = document.getElementById("curr-id") as HTMLInputElement | null;
+  const currTitleInput = document.getElementById("curr-title") as HTMLInputElement | null;
+  const currSubjectInput = document.getElementById("curr-subject") as HTMLInputElement | null;
+  const currVersionInput = document.getElementById("curr-version") as HTMLInputElement | null;
+  const currGradeSelect = document.getElementById("curr-grade-category") as HTMLSelectElement | null;
+  const currGradeLevelInput = document.getElementById("curr-grade-level") as HTMLInputElement | null;
+  const currDescInput = document.getElementById("curr-description") as HTMLTextAreaElement | null;
+  const currActiveInput = document.getElementById("curr-is-active") as HTMLInputElement | null;
+  const currModalTitle = document.getElementById("curriculum-modal-title");
+  const currSubmitText = document.getElementById("btn-curriculum-text");
+  const currStatusCont = document.getElementById("curr-status-container");
+
+  btnEditCurrInfo?.addEventListener("click", () => {
+    try {
+      const curr = JSON.parse(btnEditCurrInfo.dataset.curr || "{}");
+      if (currIdInput) currIdInput.value = curr.id;
+      if (currTitleInput) currTitleInput.value = curr.title || "";
+      if (currSubjectInput) currSubjectInput.value = curr.subject || "";
+      if (currVersionInput) currVersionInput.value = curr.version || "2026.1";
+      if (currDescInput) currDescInput.value = curr.description || "";
+      if (currGradeSelect) currGradeSelect.value = curr.gradeCategory || `Kelas ${curr.gradeLevel} SD`;
+      if (currGradeLevelInput) currGradeLevelInput.value = String(curr.gradeLevel ?? 1);
+      if (currActiveInput) currActiveInput.checked = curr.isActive !== false;
+
+      if (currModalTitle) currModalTitle.innerHTML = "<span>✏️ Edit Kurikulum Master</span>";
+      if (currSubmitText) currSubmitText.textContent = "Simpan Perubahan";
+      if (currStatusCont) currStatusCont.classList.remove("hidden");
+      currModal?.classList.remove("hidden");
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  currGradeSelect?.addEventListener("change", () => {
+    const opt = currGradeSelect.options[currGradeSelect.selectedIndex];
+    if (opt && currGradeLevelInput) {
+      currGradeLevelInput.value = opt.dataset.level || "1";
+    }
+  });
+
+  currForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btnSubmit = document.getElementById("btn-submit-curriculum") as HTMLButtonElement | null;
+    const btnSpinner = document.getElementById("btn-curriculum-spinner");
+    if (btnSubmit) btnSubmit.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove("hidden");
+
+    const fd = new FormData(currForm);
+    const payload = {
+      id: fd.get("id")?.toString(),
+      title: fd.get("title")?.toString()?.trim(),
+      subject: fd.get("subject")?.toString()?.trim(),
+      version: fd.get("version")?.toString()?.trim(),
+      gradeCategory: fd.get("gradeCategory")?.toString()?.trim(),
+      gradeLevel: Number(fd.get("gradeLevel")) || 1,
+      description: fd.get("description")?.toString()?.trim(),
+      isActive: fd.get("isActive") === "on",
+    };
+
+    try {
+      const res = await fetch("/api/admin/curriculum/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memperbarui kurikulum.");
+      alert(data.message || "Kurikulum berhasil diperbarui!");
+      currModal?.classList.add("hidden");
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || "Terjadi kesalahan.");
+    } finally {
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSpinner) btnSpinner.classList.add("hidden");
+    }
+  });
+</script>

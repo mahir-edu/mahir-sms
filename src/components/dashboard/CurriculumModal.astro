@@ -1,0 +1,139 @@
+---
+// CurriculumModal.astro
+---
+
+<div id="curriculum-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+  <div id="curriculum-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="relative bg-white rounded-2xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 z-10">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+        <div>
+          <h3 id="curriculum-modal-title" class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span>📚 Tambah Kurikulum Master Baru</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Daftarkan master silabus kurikulum nasional untuk seluruh unit Sekolah Pemancar.
+          </p>
+        </div>
+        <button id="btn-close-curriculum-modal" type="button" class="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Alert Notification -->
+      <div id="curriculum-modal-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Form -->
+      <form id="form-curriculum" class="space-y-4">
+        <input type="hidden" name="id" id="curr-id" value="" />
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Judul Kurikulum <span class="text-rose-500">*</span>
+          </label>
+          <input 
+            type="text" 
+            name="title" 
+            id="curr-title" 
+            required 
+            placeholder="Contoh: Kurikulum Matematika Multisensori Mahir SD" 
+            class="form-input text-xs py-2!" 
+          />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Mata Pelajaran <span class="text-rose-500">*</span>
+            </label>
+            <input 
+              type="text" 
+              name="subject" 
+              id="curr-subject" 
+              required 
+              placeholder="Contoh: Matematika, Sains, Bahasa" 
+              class="form-input text-xs py-2!" 
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Versi Silabus <span class="text-rose-500">*</span>
+            </label>
+            <input 
+              type="text" 
+              name="version" 
+              id="curr-version" 
+              required 
+              value="2026.1" 
+              placeholder="2026.1" 
+              class="form-input text-xs py-2!" 
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Jenjang / Tingkat Kelas <span class="text-rose-500">*</span>
+            </label>
+            <select name="gradeCategory" id="curr-grade-category" class="form-input text-xs py-2!" required>
+              <optgroup label="Pendidikan Anak Usia Dini">
+                <option value="PAUD / TK" data-level="0">PAUD / TK</option>
+              </optgroup>
+              <optgroup label="Sekolah Dasar (SD)">
+                <option value="Kelas 1 SD" data-level="1" selected>Kelas 1 SD</option>
+                <option value="Kelas 2 SD" data-level="2">Kelas 2 SD</option>
+                <option value="Kelas 3 SD" data-level="3">Kelas 3 SD</option>
+                <option value="Kelas 4 SD" data-level="4">Kelas 4 SD</option>
+                <option value="Kelas 5 SD" data-level="5">Kelas 5 SD</option>
+                <option value="Kelas 6 SD" data-level="6">Kelas 6 SD</option>
+              </optgroup>
+              <optgroup label="Sekolah Menengah Pertama (SMP)">
+                <option value="Kelas 7 SMP" data-level="7">Kelas 7 SMP</option>
+                <option value="Kelas 8 SMP" data-level="8">Kelas 8 SMP</option>
+                <option value="Kelas 9 SMP" data-level="9">Kelas 9 SMP</option>
+              </optgroup>
+              <optgroup label="Lainnya">
+                <option value="Kustom / Terpadu" data-level="99">Kustom / Terpadu</option>
+              </optgroup>
+            </select>
+            <input type="hidden" name="gradeLevel" id="curr-grade-level" value="1" />
+          </div>
+          <div id="curr-status-container" class="hidden flex flex-col justify-end pb-1">
+            <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+              <input type="checkbox" name="isActive" id="curr-is-active" class="rounded border-slate-300 text-brand-indigo focus:ring-brand-indigo" checked />
+              <span>Status Aktif</span>
+            </label>
+            <span class="text-[10px] text-slate-400 mt-0.5">Kurikulum dapat diakses oleh cabang</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Deskripsi Silabus & Fokus Pembelajaran</label>
+          <textarea 
+            name="description" 
+            id="curr-description" 
+            rows="3" 
+            placeholder="Jelaskan fokus kompetensi dan integrasi metode 5-pilar multisensori..." 
+            class="form-input text-xs py-2!"
+          ></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" id="btn-cancel-curriculum" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">
+            Batal
+          </button>
+          <button type="submit" id="btn-submit-curriculum" class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer inline-flex items-center gap-1.5">
+            <svg id="btn-curriculum-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="btn-curriculum-text">Terbitkan Kurikulum</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
