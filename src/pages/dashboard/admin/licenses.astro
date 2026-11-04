@@ -1,0 +1,750 @@
+---
+import { app } from "../../../firebase/server";
+import { getAuth } from "firebase-admin/auth";
+import { 
+  getUserProfile, 
+  getAllLicenseTypes, 
+  getAllCurriculumsAndMaterials,
+  getLicenseTypeStats 
+} from "../../../firebase/firestore";
+import DashboardLayout from "../../../layouts/DashboardLayout.astro";
+import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
+import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
+import LicenseTypeModal from "../../../components/dashboard/LicenseTypeModal.astro";
+import LicenseMaterialsDrawer from "../../../components/dashboard/LicenseMaterialsDrawer.astro";
+import type { LicenseTypeDocument } from "../../../types/database";
+
+/* 1. Session verification & ensure HQ Admin role */
+const auth = getAuth(app);
+if (!Astro.cookies.has("__session")) {
+  return Astro.redirect("/signin");
+}
+
+let user;
+try {
+  const sessionCookie = Astro.cookies.get("__session")!.value;
+  const decodedCookie = await auth.verifySessionCookie(sessionCookie);
+  user = await auth.getUser(decodedCookie.uid);
+} catch {
+  return Astro.redirect("/signin");
+}
+
+if (!user) {
+  return Astro.redirect("/signin");
+}
+
+const userProfile = await getUserProfile(user.uid);
+if (!userProfile || userProfile.role !== "hq_admin") {
+  return Astro.redirect("/dashboard");
+}
+
+// 2. Fetch Master License Packages, Curriculums, Materials & Usage Stats
+const licensePackages = await getAllLicenseTypes(true); // include inactive
+const { curriculums, materials } = await getAllCurriculumsAndMaterials();
+const stats = await getLicenseTypeStats();
+
+// 3. Calculate KPIs
+const totalPackages = licensePackages.length;
+const activePackages = licensePackages.filter(p => p.isActive).length;
+
+let totalPrice = 0;
+let totalSubscribedBranches = 0;
+licensePackages.forEach(p => {
+  if (p.isActive) totalPrice += p.defaultPrice || 0;
+  totalSubscribedBranches += stats[p.code.toLowerCase()] || 0;
+});
+
+const avgPrice = activePackages > 0 ? Math.round(totalPrice / activePackages) : 0;
+
+function formatRupiah(num: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(num || 0);
+}
+---
+
+<DashboardLayout 
+  title="Paket & Tipe Lisensi" 
+  description="Manajemen tipe lisensi kemitraan, harga default, kuota siswa/guru, dan hak akses materi."
+  userProfile={userProfile}
+>
+  <div class="space-y-6">
+    
+    <!-- Page Header -->
+    <DashboardPageHeader 
+      title="Manajemen Paket & Tipe Lisensi"
+      description="Konfigurasi paket lisensi kemitraan sekolah cabang (Pemancar), tetapkan harga default, kuota akses, dan kelola materi ajar yang disertakan."
+      breadcrumbs={[
+        { label: "Central HQ Admin" },
+        { label: "Ekosistem Sekolah", href: "/dashboard/admin/branches" },
+        { label: "Tipe & Paket Lisensi" }
+      ]}
+    >
+      <div slot="actions" class="flex items-center gap-2.5">
+        <a 
+          href="/dashboard/admin/branches" 
+          class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 transition-colors no-underline inline-flex items-center gap-1.5"
+        >
+          <span>🏫 Lihat Sekolah Cabang</span>
+        </a>
+        <button 
+          type="button" 
+          id="btn-open-create-license" 
+          class="btn-primary text-xs py-2.5! px-4! flex items-center gap-1.5 font-bold cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          <span>Tambah Tipe Lisensi Baru</span>
+        </button>
+      </div>
+    </DashboardPageHeader>
+
+    <!-- KPI Metric Cards Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <DataMetricCard 
+        title="Total Paket Lisensi" 
+        value={totalPackages} 
+        subtext="Tier lisensi terdaftar di sistem"
+        icon="💳" 
+        theme="indigo" 
+      />
+      <DataMetricCard 
+        title="Paket Lisensi Aktif" 
+        value={activePackages} 
+        subtext="Dapat dipilih saat penerbitan cabang"
+        icon="🟢" 
+        theme="emerald" 
+      />
+      <DataMetricCard 
+        title="Rata-rata Harga Default" 
+        value={formatRupiah(avgPrice)} 
+        subtext="Biaya kemitraan tahunan rata-rata"
+        icon="🏷️" 
+        theme="sky" 
+      />
+      <DataMetricCard 
+        title="Cabang Berlangganan" 
+        value={totalSubscribedBranches} 
+        subtext="Sekolah pemancar dengan kontrak aktif"
+        icon="🏫" 
+        theme="lime" 
+      />
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div class="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <!-- Search Input -->
+        <div class="relative flex-1 max-w-md">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input 
+            type="text" 
+            id="search-license" 
+            placeholder="Cari nama paket atau kode slug..." 
+            class="form-input pl-9! text-xs py-2!"
+          />
+        </div>
+
+        <!-- Status Filter -->
+        <div class="flex items-center gap-2">
+          <select id="status-filter" class="form-input text-xs py-2! sm:w-44">
+            <option value="all">Semua Status</option>
+            <option value="active" selected>Hanya Paket Aktif</option>
+            <option value="archived">Diarsipkan (Nonaktif)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- License Packages Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" id="packages-grid">
+      {licensePackages.map((pkg) => {
+        const subscriberCount = stats[pkg.code.toLowerCase()] || 0;
+        const cycleLabel = pkg.billingCycle === "monthly" ? "bulan" : pkg.billingCycle === "one_time" ? "sekali bayar" : "tahun";
+        const allowedMatsCount = (pkg.includedMaterialIds || []).length;
+        const allowedCurrsCount = (pkg.allowedCurriculumIds || []).length;
+
+        return (
+          <div 
+            class="license-card glass-card rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden relative"
+            data-name={pkg.name.toLowerCase()}
+            data-code={pkg.code.toLowerCase()}
+            data-status={pkg.isActive ? "active" : "archived"}
+            data-package={JSON.stringify(pkg)}
+          >
+            <!-- Card Header Ribbon -->
+            <div class={`h-2 w-full ${
+              pkg.code === "premium" ? "bg-linear-to-r from-purple-500 to-indigo-600" :
+              pkg.code === "enterprise" ? "bg-linear-to-r from-amber-500 to-rose-600" :
+              pkg.code === "basic" ? "bg-linear-to-r from-slate-400 to-slate-500" :
+              "bg-linear-to-r from-emerald-500 to-teal-600"
+            }`}></div>
+
+            <div class="p-6 flex-1 flex flex-col">
+              
+              <!-- Title & Status Badge -->
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <h3 class="font-extrabold text-base text-slate-900 leading-tight">
+                    {pkg.name}
+                  </h3>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
+                      {pkg.code}
+                    </span>
+                    <span class="text-[10px] text-slate-400">Urutan #{pkg.order || 1}</span>
+                  </div>
+                </div>
+
+                <div class="shrink-0">
+                  {pkg.isActive ? (
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      Aktif
+                    </span>
+                  ) : (
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                      Arsip
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <!-- Price Tag -->
+              <div class="my-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Biaya Default Lisensi:</div>
+                <div class="flex items-baseline gap-1 mt-1">
+                  <span class="text-2xl font-black text-slate-900">
+                    {formatRupiah(pkg.defaultPrice)}
+                  </span>
+                  <span class="text-xs font-semibold text-slate-500">/ {cycleLabel}</span>
+                </div>
+              </div>
+
+              <!-- Quotas Summary Pills -->
+              <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+                <div class="p-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80">
+                  <div class="text-[10px] font-bold text-emerald-800 uppercase">Siswa</div>
+                  <div class="text-sm font-extrabold text-emerald-950 mt-0.5">{pkg.defaultMaxStudents}</div>
+                </div>
+                <div class="p-2 rounded-lg bg-sky-50/70 border border-sky-200/80">
+                  <div class="text-[10px] font-bold text-sky-800 uppercase">Guru</div>
+                  <div class="text-sm font-extrabold text-sky-950 mt-0.5">{pkg.defaultMaxTeachers}</div>
+                </div>
+                <div class="p-2 rounded-lg bg-purple-50/70 border border-purple-200/80">
+                  <div class="text-[10px] font-bold text-purple-800 uppercase">Tenggang</div>
+                  <div class="text-sm font-extrabold text-purple-950 mt-0.5">{pkg.defaultGracePeriodDays} hr</div>
+                </div>
+              </div>
+
+              <!-- Material & Curriculum Access Badge -->
+              <div class="mb-4 p-3 rounded-xl bg-purple-50/40 border border-purple-200 text-xs">
+                <div class="flex items-center justify-between font-bold text-purple-900 mb-1">
+                  <span>📁 Hak Akses Materi:</span>
+                  <span class="text-[11px] font-extrabold text-purple-700">
+                    {allowedMatsCount} Modul &bull; {allowedCurrsCount} Kurikulum
+                  </span>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  {(pkg.allowedMaterialTiers || ["standard"]).map(tier => (
+                    <span class="text-[9px] font-bold uppercase px-2 py-0.2 rounded-md bg-white border border-purple-200 text-purple-800">
+                      {tier.replace("_", " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <!-- Description -->
+              {pkg.description && (
+                <p class="text-xs text-slate-600 line-clamp-2 mb-4 leading-relaxed">
+                  {pkg.description}
+                </p>
+              )}
+
+              <!-- Features Checklist -->
+              <div class="space-y-1.5 mb-5 flex-1">
+                {(pkg.features && pkg.features.length > 0 ? pkg.features : [
+                  "Akses Kurikulum Mahir Edu",
+                  "Portal Presensi & Nilai Guru",
+                  "Portal Orang Tua & Siswa"
+                ]).slice(0, 5).map(feat => (
+                  <div class="flex items-start gap-2 text-xs text-slate-700">
+                    <svg class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+
+              <!-- Active Branch Subscribers Counter -->
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 mb-4">
+                <span>Sekolah Mitra Aktif:</span>
+                <span class="font-extrabold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
+                  🏫 {subscriberCount} Cabang
+                </span>
+              </div>
+            </div>
+
+            <!-- Card Actions Footer -->
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <button 
+                type="button" 
+                class="btn-manage-materials px-3 py-1.5 rounded-lg text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer inline-flex items-center gap-1"
+                data-id={pkg.id}
+                data-name={pkg.name}
+                data-code={pkg.code}
+                data-tiers={JSON.stringify(pkg.allowedMaterialTiers || ["standard"])}
+                data-curriculums={JSON.stringify(pkg.allowedCurriculumIds || [])}
+                data-materials={JSON.stringify(pkg.includedMaterialIds || [])}
+              >
+                <span>📁 Kelola Materi</span>
+              </button>
+
+              <div class="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  class="btn-edit-package px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition-colors cursor-pointer"
+                  data-package={JSON.stringify(pkg)}
+                >
+                  Edit
+                </button>
+                <button 
+                  type="button" 
+                  class="btn-toggle-status p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
+                  data-id={pkg.id}
+                  data-active={pkg.isActive ? "true" : "false"}
+                  title={pkg.isActive ? "Arsipkan Paket Ini" : "Aktifkan Kembali Paket Ini"}
+                >
+                  {pkg.isActive ? (
+                    <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                  ) : (
+                    <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    <!-- Empty State -->
+    <div id="no-packages-found" class="hidden p-12 text-center glass-card rounded-2xl border border-slate-200">
+      <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-2xl">
+        🔍
+      </div>
+      <h3 class="text-sm font-bold text-slate-800 mb-1">Tidak ada paket lisensi yang cocok</h3>
+      <p class="text-xs text-slate-500">Coba ubah kata kunci pencarian atau ubah filter status di atas.</p>
+    </div>
+
+  </div>
+
+  <!-- Reusable Interactive Modals & Drawers -->
+  <LicenseTypeModal />
+  <LicenseMaterialsDrawer curriculums={curriculums} materials={materials} />
+</DashboardLayout>
+
+<script>
+  // 1. Live Filter & Search Logic
+  const searchInput = document.getElementById("search-license") as HTMLInputElement | null;
+  const statusFilter = document.getElementById("status-filter") as HTMLSelectElement | null;
+  const cards = document.querySelectorAll<HTMLElement>(".license-card");
+  const noResults = document.getElementById("no-packages-found");
+
+  function filterPackages() {
+    const q = searchInput?.value.toLowerCase().trim() || "";
+    const status = statusFilter?.value || "active";
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+      const name = card.dataset.name || "";
+      const code = card.dataset.code || "";
+      const cardStatus = card.dataset.status || "";
+
+      const matchesSearch = !q || name.includes(q) || code.includes(q);
+      const matchesStatus = status === "all" || cardStatus === status;
+
+      if (matchesSearch && matchesStatus) {
+        card.style.display = "";
+        visibleCount++;
+      } else {
+        card.style.display = "none";
+      }
+    });
+
+    if (noResults) {
+      if (visibleCount === 0) {
+        noResults.classList.remove("hidden");
+      } else {
+        noResults.classList.add("hidden");
+      }
+    }
+  }
+
+  searchInput?.addEventListener("input", filterPackages);
+  statusFilter?.addEventListener("change", filterPackages);
+  filterPackages(); // initial filter execution
+
+  // 2. License Type Modal (Create & Edit) Controls
+  const modal = document.getElementById("license-type-modal");
+  const modalTitle = document.getElementById("license-modal-title");
+  const btnOpenCreate = document.getElementById("btn-open-create-license");
+  const btnCloseModal = document.getElementById("btn-close-license-modal");
+  const btnCancelModal = document.getElementById("btn-cancel-license-modal");
+  const backdrop = document.getElementById("license-modal-backdrop");
+  const form = document.getElementById("license-upsert-form") as HTMLFormElement | null;
+  const formAlert = document.getElementById("license-form-alert");
+
+  const formId = document.getElementById("form-license-id") as HTMLInputElement | null;
+  const formName = document.getElementById("form-license-name") as HTMLInputElement | null;
+  const formCode = document.getElementById("form-license-code") as HTMLInputElement | null;
+  const formPrice = document.getElementById("form-license-price") as HTMLInputElement | null;
+  const formCycle = document.getElementById("form-license-cycle") as HTMLSelectElement | null;
+  const formDesc = document.getElementById("form-license-desc") as HTMLTextAreaElement | null;
+  const formMaxStudents = document.getElementById("form-license-max-students") as HTMLInputElement | null;
+  const formMaxTeachers = document.getElementById("form-license-max-teachers") as HTMLInputElement | null;
+  const formGrace = document.getElementById("form-license-grace") as HTMLInputElement | null;
+  const formFeatures = document.getElementById("form-license-features") as HTMLTextAreaElement | null;
+  const formOrder = document.getElementById("form-license-order") as HTMLInputElement | null;
+  const formActive = document.getElementById("form-license-active") as HTMLInputElement | null;
+  const pricePreview = document.getElementById("price-preview");
+
+  function formatRp(val: number): string {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(val || 0);
+  }
+
+  function updatePricePreview() {
+    if (!formPrice || !pricePreview) return;
+    const num = Number(formPrice.value) || 0;
+    const cycle = formCycle?.value === "monthly" ? "bulan" : formCycle?.value === "one_time" ? "sekali bayar" : "tahun";
+    pricePreview.textContent = `${formatRp(num)} / ${cycle}`;
+  }
+
+  formPrice?.addEventListener("input", updatePricePreview);
+  formCycle?.addEventListener("change", updatePricePreview);
+
+  function openModal(isEdit = false, pkgData?: any) {
+    if (!modal) return;
+    if (formAlert) formAlert.classList.add("hidden");
+
+    if (isEdit && pkgData) {
+      if (modalTitle) modalTitle.innerHTML = `<span>✏️ Edit Paket: ${pkgData.name}</span>`;
+      if (formId) formId.value = pkgData.id;
+      if (formName) formName.value = pkgData.name || "";
+      if (formCode) {
+        formCode.value = pkgData.code || "";
+        formCode.readOnly = true; // Code slug locked in edit mode to prevent breaking references
+      }
+      if (formPrice) formPrice.value = pkgData.defaultPrice || 0;
+      if (formCycle) formCycle.value = pkgData.billingCycle || "yearly";
+      if (formDesc) formDesc.value = pkgData.description || "";
+      if (formMaxStudents) formMaxStudents.value = pkgData.defaultMaxStudents || 150;
+      if (formMaxTeachers) formMaxTeachers.value = pkgData.defaultMaxTeachers || 15;
+      if (formGrace) formGrace.value = pkgData.defaultGracePeriodDays ?? 14;
+      if (formFeatures) formFeatures.value = (pkgData.features || []).join("\n");
+      if (formOrder) formOrder.value = pkgData.order || 1;
+      if (formActive) formActive.checked = Boolean(pkgData.isActive);
+
+      // Check material tier checkboxes
+      const tiers = pkgData.allowedMaterialTiers || ["standard"];
+      document.querySelectorAll<HTMLInputElement>('input[name="materialTiers"]').forEach(chk => {
+        chk.checked = tiers.includes(chk.value);
+      });
+
+    } else {
+      if (modalTitle) modalTitle.innerHTML = `<span>💳 Tambah Tipe Lisensi Baru</span>`;
+      form?.reset();
+      if (formId) formId.value = "";
+      if (formCode) formCode.readOnly = false;
+      if (formMaxStudents) formMaxStudents.value = "150";
+      if (formMaxTeachers) formMaxTeachers.value = "15";
+      if (formGrace) formGrace.value = "14";
+      if (formOrder) formOrder.value = "5";
+      if (formActive) formActive.checked = true;
+      document.querySelectorAll<HTMLInputElement>('input[name="materialTiers"]').forEach(chk => {
+        chk.checked = chk.value === "standard";
+      });
+    }
+
+    updatePricePreview();
+    modal.classList.remove("hidden");
+  }
+
+  function closeModal() {
+    modal?.classList.add("hidden");
+  }
+
+  btnOpenCreate?.addEventListener("click", () => openModal(false));
+  btnCloseModal?.addEventListener("click", closeModal);
+  btnCancelModal?.addEventListener("click", closeModal);
+  backdrop?.addEventListener("click", closeModal);
+
+  // Edit Button click handlers
+  document.querySelectorAll<HTMLButtonElement>(".btn-edit-package").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pkgJson = btn.dataset.package;
+      if (!pkgJson) return;
+      try {
+        const pkg = JSON.parse(pkgJson);
+        openModal(true, pkg);
+      } catch (e) {
+        console.error("Failed to parse package data", e);
+      }
+    });
+  });
+
+  // Submit Handler for License Upsert
+  form?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const isEdit = Boolean(formId?.value);
+    const endpoint = isEdit ? "/api/admin/licenses/types/update" : "/api/admin/licenses/types/create";
+
+    const materialTiers: string[] = [];
+    document.querySelectorAll<HTMLInputElement>('input[name="materialTiers"]:checked').forEach(chk => {
+      materialTiers.push(chk.value);
+    });
+
+    const payload: Record<string, any> = {
+      id: formId?.value,
+      name: formName?.value,
+      code: formCode?.value,
+      defaultPrice: Number(formPrice?.value) || 0,
+      billingCycle: formCycle?.value || "yearly",
+      description: formDesc?.value,
+      defaultMaxStudents: Number(formMaxStudents?.value) || 150,
+      defaultMaxTeachers: Number(formMaxTeachers?.value) || 15,
+      defaultGracePeriodDays: Number(formGrace?.value) || 14,
+      allowedMaterialTiers: materialTiers,
+      features: formFeatures?.value || "",
+      order: Number(formOrder?.value) || 1,
+      isActive: formActive?.checked ?? true,
+    };
+
+    const submitBtn = document.getElementById("btn-submit-license") as HTMLButtonElement | null;
+    const spinner = document.getElementById("btn-license-spinner");
+    const btnText = document.getElementById("btn-license-text");
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (spinner) spinner.classList.remove("hidden");
+    if (btnText) btnText.textContent = "Menyimpan...";
+    if (formAlert) formAlert.classList.add("hidden");
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan paket lisensi.");
+
+      alert(data.message || "Paket lisensi berhasil disimpan!");
+      closeModal();
+      window.location.reload();
+
+    } catch (err: any) {
+      if (formAlert) {
+        formAlert.textContent = err.message || "Terjadi kesalahan.";
+        formAlert.className = "mb-4 p-3 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        formAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+      if (spinner) spinner.classList.add("hidden");
+      if (btnText) btnText.textContent = "Simpan Paket Lisensi";
+    }
+  });
+
+  // 3. Status Toggle Handler (Archive vs Activate)
+  document.querySelectorAll<HTMLButtonElement>(".btn-toggle-status").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      const isCurrentlyActive = btn.dataset.active === "true";
+      if (!id) return;
+
+      const confirmMsg = isCurrentlyActive 
+        ? "Apakah Anda yakin ingin mengarsipkan paket lisensi ini? Paket yang diarsipkan tidak akan muncul di daftar pilihan pendaftaran cabang baru."
+        : "Aktifkan kembali paket lisensi ini agar dapat dipilih untuk sekolah cabang?";
+
+      if (!confirm(confirmMsg)) return;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/admin/licenses/types/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, mode: "toggle", isActive: !isCurrentlyActive }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Gagal mengubah status.");
+
+        alert(data.message || "Status berhasil diperbarui!");
+        window.location.reload();
+
+      } catch (err: any) {
+        alert(err.message || "Terjadi kesalahan.");
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // 4. Materials Management Drawer Controls
+  const drawer = document.getElementById("license-materials-drawer");
+  const drawerBackdrop = document.getElementById("drawer-materials-backdrop");
+  const btnCloseDrawer = document.getElementById("btn-close-materials-drawer");
+  const btnCancelDrawer = document.getElementById("btn-cancel-materials-drawer");
+  const drawerAlert = document.getElementById("drawer-alert");
+  const drawerPkgId = document.getElementById("drawer-target-pkg-id") as HTMLInputElement | null;
+  const drawerPkgName = document.getElementById("drawer-pkg-name");
+  const drawerPkgCode = document.getElementById("drawer-pkg-code");
+  const btnSaveMaterials = document.getElementById("btn-save-drawer-materials") as HTMLButtonElement | null;
+  const drawerSpinner = document.getElementById("drawer-spinner");
+  const drawerBtnText = document.getElementById("drawer-btn-text");
+
+  const chkStandard = document.getElementById("tier-chk-standard") as HTMLInputElement | null;
+  const chkMultisensory = document.getElementById("tier-chk-multisensory") as HTMLInputElement | null;
+  const chkPremium = document.getElementById("tier-chk-premium") as HTMLInputElement | null;
+
+  function openDrawer(pkgId: string, name: string, code: string, tiers: string[], curriculums: string[], materials: string[]) {
+    if (!drawer) return;
+    if (drawerAlert) drawerAlert.classList.add("hidden");
+    if (drawerPkgId) drawerPkgId.value = pkgId;
+    if (drawerPkgName) drawerPkgName.textContent = `Kelola Materi: ${name}`;
+    if (drawerPkgCode) drawerPkgCode.textContent = code.toUpperCase();
+
+    // Check material tiers
+    if (chkStandard) chkStandard.checked = tiers.includes("standard");
+    if (chkMultisensory) chkMultisensory.checked = tiers.includes("multisensory_kit");
+    if (chkPremium) chkPremium.checked = tiers.includes("premium");
+
+    // Check curriculums
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-curriculum"]').forEach(chk => {
+      chk.checked = curriculums.includes(chk.value);
+    });
+
+    // Check materials
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-material"]').forEach(chk => {
+      chk.checked = materials.includes(chk.value);
+    });
+
+    drawer.classList.remove("hidden");
+  }
+
+  function closeDrawer() {
+    drawer?.classList.add("hidden");
+  }
+
+  btnCloseDrawer?.addEventListener("click", closeDrawer);
+  btnCancelDrawer?.addEventListener("click", closeDrawer);
+  drawerBackdrop?.addEventListener("click", closeDrawer);
+
+  document.querySelectorAll<HTMLButtonElement>(".btn-manage-materials").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id || "";
+      const name = btn.dataset.name || "";
+      const code = btn.dataset.code || "";
+      const tiers = JSON.parse(btn.dataset.tiers || "[]");
+      const currs = JSON.parse(btn.dataset.curriculums || "[]");
+      const mats = JSON.parse(btn.dataset.materials || "[]");
+      openDrawer(id, name, code, tiers, currs, mats);
+    });
+  });
+
+  // Drawer Select All / Clear helpers
+  document.getElementById("btn-select-all-curriculums")?.addEventListener("click", () => {
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-curriculum"]').forEach(chk => chk.checked = true);
+  });
+
+  document.getElementById("btn-select-all-materials")?.addEventListener("click", () => {
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-material"]').forEach(chk => chk.checked = true);
+  });
+
+  document.getElementById("btn-clear-all-materials")?.addEventListener("click", () => {
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-material"]').forEach(chk => chk.checked = false);
+  });
+
+  // Drawer Material Search Filter
+  const materialSearch = document.getElementById("drawer-material-search") as HTMLInputElement | null;
+  materialSearch?.addEventListener("input", () => {
+    const q = materialSearch.value.toLowerCase().trim();
+    document.querySelectorAll<HTMLElement>(".drawer-material-item").forEach(item => {
+      const title = item.dataset.title || "";
+      item.style.display = !q || title.includes(q) ? "" : "none";
+    });
+  });
+
+  // Save Materials Handler
+  btnSaveMaterials?.addEventListener("click", async () => {
+    const pkgId = drawerPkgId?.value;
+    if (!pkgId) return;
+
+    const allowedTiers: string[] = [];
+    if (chkStandard?.checked) allowedTiers.push("standard");
+    if (chkMultisensory?.checked) allowedTiers.push("multisensory_kit");
+    if (chkPremium?.checked) allowedTiers.push("premium");
+
+    const allowedCurriculumIds: string[] = [];
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-curriculum"]:checked').forEach(chk => {
+      allowedCurriculumIds.push(chk.value);
+    });
+
+    const includedMaterialIds: string[] = [];
+    document.querySelectorAll<HTMLInputElement>('input[name="drawer-material"]:checked').forEach(chk => {
+      includedMaterialIds.push(chk.value);
+    });
+
+    if (btnSaveMaterials) btnSaveMaterials.disabled = true;
+    if (drawerSpinner) drawerSpinner.classList.remove("hidden");
+    if (drawerBtnText) drawerBtnText.textContent = "Menyimpan Hak Akses...";
+    if (drawerAlert) drawerAlert.classList.add("hidden");
+
+    try {
+      const res = await fetch("/api/admin/licenses/types/materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: pkgId,
+          allowedMaterialTiers: allowedTiers,
+          allowedCurriculumIds,
+          includedMaterialIds,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan hak akses materi.");
+
+      alert(data.message || "Hak akses materi berhasil disimpan!");
+      closeDrawer();
+      window.location.reload();
+
+    } catch (err: any) {
+      if (drawerAlert) {
+        drawerAlert.textContent = err.message || "Terjadi kesalahan.";
+        drawerAlert.className = "m-6 mb-0 p-3.5 rounded-xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800";
+        drawerAlert.classList.remove("hidden");
+      }
+    } finally {
+      if (btnSaveMaterials) btnSaveMaterials.disabled = false;
+      if (drawerSpinner) drawerSpinner.classList.add("hidden");
+      if (drawerBtnText) drawerBtnText.textContent = "Simpan Hak Akses Materi";
+    }
+  });
+</script>

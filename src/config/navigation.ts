@@ -36,6 +36,7 @@ export function getNavigationForRole(role: UserRole): NavSection[] {
           title: "Ekosistem Sekolah",
           items: [
             { label: "Sekolah & Lisensi", href: "/dashboard/admin/branches", icon: "🏫" },
+            { label: "Tipe & Paket Lisensi", href: "/dashboard/admin/licenses", icon: "💳" },
             { label: "Verifikasi Pengguna", href: "/dashboard/admin/users", icon: "👥" },
           ],
         },

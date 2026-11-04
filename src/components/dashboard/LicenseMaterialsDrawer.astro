@@ -1,0 +1,193 @@
+---
+import type { CurriculumDocument, LessonMaterialDocument } from "../../types/database";
+
+interface Props {
+  curriculums: CurriculumDocument[];
+  materials: LessonMaterialDocument[];
+}
+
+const { curriculums, materials } = Astro.props;
+---
+
+<div id="license-materials-drawer" class="fixed inset-0 z-50 hidden overflow-hidden">
+  <!-- Backdrop -->
+  <div id="drawer-materials-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+    <div class="w-screen max-w-2xl bg-white shadow-2xl flex flex-col border-l border-slate-200">
+      
+      <!-- Drawer Header -->
+      <div class="p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 uppercase tracking-wider" id="drawer-pkg-code">STANDARD</span>
+            <h3 class="text-lg font-bold text-slate-900" id="drawer-pkg-name">Kelola Hak Akses Materi</h3>
+          </div>
+          <p class="text-xs text-slate-500">
+            Tentukan silabus kurikulum dan modul ajar yang dapat diakses oleh sekolah cabang berlisensi ini.
+          </p>
+        </div>
+        <button id="btn-close-materials-drawer" type="button" class="p-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Alert -->
+      <div id="drawer-alert" class="hidden m-6 mb-0 p-3.5 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Drawer Body -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-6">
+        <input type="hidden" id="drawer-target-pkg-id" value="" />
+
+        <!-- Section 1: Tier Akses Materi -->
+        <div class="p-4 rounded-xl bg-purple-50/60 border border-purple-200 space-y-2">
+          <label class="block text-xs font-bold text-purple-900 uppercase tracking-wider">
+            1. Tier Akses Materi Global:
+          </label>
+          <p class="text-[11px] text-purple-800 leading-relaxed mb-2">
+            Materi dengan tier yang dicentang akan otomatis dapat diunduh oleh guru pada unit sekolah ini.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <label class="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-purple-200 cursor-pointer">
+              <input type="checkbox" id="tier-chk-standard" value="standard" class="w-4 h-4 text-purple-600 rounded" />
+              <span class="font-bold text-slate-800">Standard Tier</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-purple-200 cursor-pointer">
+              <input type="checkbox" id="tier-chk-multisensory" value="multisensory_kit" class="w-4 h-4 text-purple-600 rounded" />
+              <span class="font-bold text-slate-800">Multisensory Kit</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-lg bg-white border border-purple-200 cursor-pointer">
+              <input type="checkbox" id="tier-chk-premium" value="premium" class="w-4 h-4 text-purple-600 rounded" />
+              <span class="font-bold text-slate-800">Premium Tier</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Section 2: Silabus Kurikulum -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">2. Silabus Kurikulum Termasuk</h4>
+              <p class="text-[11px] text-slate-500">Pilih kurikulum yang diizinkan untuk paket ini.</p>
+            </div>
+            <button type="button" id="btn-select-all-curriculums" class="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer">
+              Pilih Semua
+            </button>
+          </div>
+
+          {curriculums.length === 0 ? (
+            <p class="text-xs text-slate-400 italic">Belum ada kurikulum terdaftar.</p>
+          ) : (
+            <div class="space-y-2">
+              {curriculums.map(c => (
+                <label class="flex items-start gap-3 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    name="drawer-curriculum" 
+                    value={c.id} 
+                    class="mt-0.5 w-4 h-4 text-emerald-600 rounded" 
+                  />
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-bold text-xs text-slate-900">{c.title}</span>
+                      <span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                        Kelas {c.gradeLevel}
+                      </span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-0.5">{c.description || "Silabus kurikulum matematika multisensori."}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <!-- Section 3: Modul & Lembar Kerja Spesifik -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">3. Pustaka Materi & Lembar Kerja Khusus</h4>
+              <p class="text-[11px] text-slate-500">Pilih lembar kerja dan alat peraga cetak yang disertakan.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-select-all-materials" class="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer">
+                Pilih Semua
+              </button>
+              <span class="text-slate-300">&bull;</span>
+              <button type="button" id="btn-clear-all-materials" class="text-[11px] font-bold text-slate-500 hover:underline cursor-pointer">
+                Kosongkan
+              </button>
+            </div>
+          </div>
+
+          <!-- Search Filter -->
+          <input 
+            type="text" 
+            id="drawer-material-search" 
+            placeholder="Cari judul materi..." 
+            class="form-input text-xs py-1.5!"
+          />
+
+          {materials.length === 0 ? (
+            <p class="text-xs text-slate-400 italic">Belum ada materi pembelajaran dalam pustaka.</p>
+          ) : (
+            <div class="space-y-2 max-h-72 overflow-y-auto pr-1" id="drawer-materials-list">
+              {materials.map(m => (
+                <label 
+                  class="drawer-material-item flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                  data-title={m.title.toLowerCase()}
+                >
+                  <div class="flex items-center gap-3">
+                    <input 
+                      type="checkbox" 
+                      name="drawer-material" 
+                      value={m.id} 
+                      class="w-4 h-4 text-emerald-600 rounded" 
+                    />
+                    <div>
+                      <div class="font-bold text-xs text-slate-900">{m.title}</div>
+                      <div class="text-[10px] text-slate-400 capitalize">Tipe: {m.materialType.replace("_", " ")}</div>
+                    </div>
+                  </div>
+                  <span class={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                    m.requiredPackageTier === "premium" ? "bg-purple-100 text-purple-800 border-purple-200" :
+                    m.requiredPackageTier === "multisensory_kit" ? "bg-amber-100 text-amber-800 border-amber-200" :
+                    "bg-slate-200 text-slate-700 border-slate-300"
+                  }`}>
+                    Tier: {m.requiredPackageTier}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      <!-- Drawer Footer -->
+      <div class="p-4 sm:p-6 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+        <button 
+          type="button" 
+          id="btn-cancel-materials-drawer" 
+          class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer"
+        >
+          Tutup
+        </button>
+        <button 
+          type="button" 
+          id="btn-save-drawer-materials" 
+          class="btn-primary text-xs py-2! px-6! font-bold cursor-pointer inline-flex items-center gap-2"
+        >
+          <svg id="drawer-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span id="drawer-btn-text">Simpan Hak Akses Materi</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>

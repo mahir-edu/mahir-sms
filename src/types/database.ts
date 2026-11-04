@@ -75,7 +75,7 @@ export interface BranchLicenseDocument {
   branchId: string;
   branchName: string;
   licenseKey: string;
-  packageType: LicensePackageTier;
+  packageType: LicensePackageTier | string;
   
   // Date & Timeline Management
   issueDate: Timestamp;
@@ -94,6 +94,33 @@ export interface BranchLicenseDocument {
   isActive: boolean;
   issuedByUid: string;
   billingNotes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface LicenseTypeDocument {
+  id: string;                     // e.g. "tier-basic", "tier-standard", "pkg-yayasan-01"
+  name: string;                   // e.g. "Paket Standard Pemancar"
+  code: string;                   // slug: "basic", "standard", "premium", "enterprise", or custom
+  description: string;
+  defaultPrice: number;           // e.g. 15000000 (in IDR)
+  billingCycle: 'yearly' | 'monthly' | 'one_time';
+  currency: 'IDR';
+  
+  // Default Quotas & Parameters
+  defaultMaxStudents: number;     // e.g. 150
+  defaultMaxTeachers: number;     // e.g. 15
+  defaultGracePeriodDays: number; // e.g. 14
+  
+  // Content & Material Access Entitlements
+  allowedMaterialTiers: ('standard' | 'multisensory_kit' | 'premium')[];
+  allowedCurriculumIds: string[]; // Specific curriculum syllabus IDs granted
+  includedMaterialIds: string[];  // Explicitly granted lesson material IDs
+  features: string[];             // Bullets: ["Akses Pustaka Modul Lengkap", "Kit Multisensori Digital", ...]
+  
+  isActive: boolean;
+  order: number;                  // Sorting order on UI cards
+  createdByUid: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -152,7 +179,7 @@ export interface LessonMaterialDocument {
   title: string;
   description: string;
   materialType: MaterialType;
-  requiredPackageTier: LicensePackageTier;
+  requiredPackageTier: LicensePackageTier | string;
   fileUrl: string;
   fileName: string;
   fileSizeBytes: number;

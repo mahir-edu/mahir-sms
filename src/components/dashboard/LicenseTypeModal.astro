@@ -1,0 +1,235 @@
+---
+// LicenseTypeModal.astro - Component for Creating & Editing License Packages
+---
+
+<div id="license-type-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+  <!-- Backdrop -->
+  <div id="license-modal-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
+
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="relative bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 z-10">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+        <div>
+          <h3 id="license-modal-title" class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+            <span>💳 Tambah Tipe Lisensi Baru</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Konfigurasi nama paket kemitraan, harga default, kuota siswa/guru, dan fasilitas yang disertakan.
+          </p>
+        </div>
+        <button id="btn-close-license-modal" type="button" class="p-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Alert -->
+      <div id="license-form-alert" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold"></div>
+
+      <!-- Form -->
+      <form id="license-upsert-form" class="space-y-4">
+        <input type="hidden" id="form-license-id" name="id" value="" />
+
+        <!-- 1. Identity & Pricing -->
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-700">1. Identitas & Harga Lisensi:</div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                Nama Paket Lisensi <span class="text-rose-500">*</span>
+              </label>
+              <input 
+                type="text" 
+                name="name" 
+                id="form-license-name" 
+                required 
+                placeholder="Contoh: Paket Standard Pemancar" 
+                class="form-input text-xs py-2!"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                Kode / Slug Paket <span class="text-rose-500">*</span>
+              </label>
+              <input 
+                type="text" 
+                name="code" 
+                id="form-license-code" 
+                required 
+                placeholder="standard, yayasan-khusus, dll" 
+                class="form-input text-xs py-2! font-mono"
+              />
+              <p class="text-[10px] text-slate-400 mt-0.5">Hanya huruf kecil, angka, dan strip (-)</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                Harga Default (IDR) <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-xs font-bold text-slate-400 pointer-events-none">Rp</span>
+                <input 
+                  type="number" 
+                  name="defaultPrice" 
+                  id="form-license-price" 
+                  required 
+                  min="0" 
+                  step="50000" 
+                  placeholder="15000000" 
+                  class="form-input text-xs py-2! pl-9!"
+                />
+              </div>
+              <p id="price-preview" class="text-[11px] font-semibold text-emerald-700 mt-1">Rp 0 / tahun</p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">
+                Siklus Penagihan
+              </label>
+              <select name="billingCycle" id="form-license-cycle" class="form-input text-xs py-2!">
+                <option value="yearly">Tahunan (Per 1 Tahun)</option>
+                <option value="monthly">Bulanan (Per 1 Bulan)</option>
+                <option value="one_time">Sekali Bayar (Lifetime / One-time)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Deskripsi Ringkas</label>
+            <textarea 
+              name="description" 
+              id="form-license-desc" 
+              rows="2" 
+              placeholder="Jelaskan peruntukan paket lisensi ini untuk sekolah cabang..." 
+              class="form-input text-xs py-2!"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- 2. Quotas & Grace Period -->
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-700">2. Batas Kuota & Parameter Default:</div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Siswa</label>
+              <input 
+                type="number" 
+                name="defaultMaxStudents" 
+                id="form-license-max-students" 
+                value="150" 
+                min="1" 
+                required 
+                class="form-input text-xs py-2!"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Batas Kuota Guru</label>
+              <input 
+                type="number" 
+                name="defaultMaxTeachers" 
+                id="form-license-max-teachers" 
+                value="15" 
+                min="1" 
+                required 
+                class="form-input text-xs py-2!"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Masa Tenggang (Hari)</label>
+              <input 
+                type="number" 
+                name="defaultGracePeriodDays" 
+                id="form-license-grace" 
+                value="14" 
+                min="0" 
+                required 
+                class="form-input text-xs py-2!"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Features & Material Access Tiers -->
+        <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="text-[11px] font-bold uppercase tracking-wider text-slate-700">3. Fasilitas & Akses Materi:</div>
+          
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Tier Akses Pustaka Materi Berlisensi:</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer">
+                <input type="checkbox" name="materialTiers" value="standard" checked class="w-4 h-4 text-emerald-600 rounded" />
+                <span class="font-semibold text-slate-700">Standard Tier</span>
+              </label>
+              <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer">
+                <input type="checkbox" name="materialTiers" value="multisensory_kit" class="w-4 h-4 text-emerald-600 rounded" />
+                <span class="font-semibold text-slate-700">Multisensory Kit</span>
+              </label>
+              <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer">
+                <input type="checkbox" name="materialTiers" value="premium" class="w-4 h-4 text-emerald-600 rounded" />
+                <span class="font-semibold text-slate-700">Premium Tier</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Daftar Fitur & Keunggulan <span class="text-slate-400 font-normal">(Satu baris per fitur)</span>
+            </label>
+            <textarea 
+              name="features" 
+              id="form-license-features" 
+              rows="3" 
+              placeholder="Akses Pustaka Modul Lengkap&#10;Kit Peraga Manipulatif Digital&#10;Pelatihan Guru Bersertifikasi" 
+              class="form-input text-xs py-2! font-sans"
+            ></textarea>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Urutan Tampilan</label>
+              <input type="number" name="order" id="form-license-order" value="1" min="1" class="form-input text-xs py-2!" />
+            </div>
+            <div class="flex items-center gap-2 pt-6">
+              <input type="checkbox" name="isActive" id="form-license-active" checked class="w-4 h-4 text-emerald-600 rounded" />
+              <label for="form-license-active" class="text-xs text-slate-700 font-bold cursor-pointer">
+                Paket Aktif & Dapat Dipilih Saat Penerbitan Cabang
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          <button 
+            type="button" 
+            id="btn-cancel-license-modal" 
+            class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            Batal
+          </button>
+          <button 
+            type="submit" 
+            id="btn-submit-license" 
+            class="btn-primary text-xs py-2! px-5! font-bold cursor-pointer inline-flex items-center gap-2"
+          >
+            <svg id="btn-license-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="btn-license-text">Simpan Paket Lisensi</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

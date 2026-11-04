@@ -16,7 +16,8 @@ import type {
   StudentGradeRecord,
   NotificationDocument,
   EmailQueueDocument,
-  NotificationType
+  NotificationType,
+  LicenseTypeDocument
 } from "../types/database";
 
 export const db = getFirestore(app);
@@ -29,6 +30,7 @@ export const collections = {
   users: () => db.collection("users"),
   branches: () => db.collection("branches"),
   branchLicenses: () => db.collection("branch_licenses"),
+  licenseTypes: () => db.collection("license_types"),
   curriculums: () => db.collection("curriculums"),
   lessonPlans: () => db.collection("lesson_plans"),
   lessonMaterials: () => db.collection("lesson_materials"),
@@ -1079,4 +1081,184 @@ export async function renewBranchLicense(licenseId: string, params: {
     updatedAt: Timestamp.now(),
   });
 }
+
+// ==========================================
+// 12. Master License Type & Package Management Helpers
+// ==========================================
+export async function getAllLicenseTypes(includeInactive = false): Promise<LicenseTypeDocument[]> {
+  let query = collections.licenseTypes().orderBy("order", "asc") as FirebaseFirestore.Query;
+  if (!includeInactive) {
+    query = query.where("isActive", "==", true);
+  }
+  const snapshot = await query.get();
+  return snapshot.docs.map(doc => doc.data() as LicenseTypeDocument);
+}
+
+export async function getLicenseTypeById(id: string): Promise<LicenseTypeDocument | null> {
+  const doc = await collections.licenseTypes().doc(id).get();
+  return doc.exists ? (doc.data() as LicenseTypeDocument) : null;
+}
+
+export async function getLicenseTypeByCode(code: string): Promise<LicenseTypeDocument | null> {
+  const snapshot = await collections.licenseTypes()
+    .where("code", "==", code.trim().toLowerCase())
+    .limit(1)
+    .get();
+  return snapshot.empty ? null : (snapshot.docs[0].data() as LicenseTypeDocument);
+}
+
+export interface CreateLicenseTypeParams {
+  name: string;
+  code: string;
+  description: string;
+  defaultPrice: number;
+  billingCycle?: 'yearly' | 'monthly' | 'one_time';
+  defaultMaxStudents: number;
+  defaultMaxTeachers: number;
+  defaultGracePeriodDays?: number;
+  allowedMaterialTiers?: ('standard' | 'multisensory_kit' | 'premium')[];
+  allowedCurriculumIds?: string[];
+  includedMaterialIds?: string[];
+  features?: string[];
+  order?: number;
+  adminUid: string;
+}
+
+export async function createLicenseType(params: CreateLicenseTypeParams): Promise<string> {
+  const cleanCode = params.code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+  const existing = await getLicenseTypeByCode(cleanCode);
+  if (existing) {
+    throw new Error(`Paket lisensi dengan kode "${cleanCode}" sudah terdaftar.`);
+  }
+
+  const id = "pkg-" + cleanCode;
+  const now = Timestamp.now();
+
+  const docData: LicenseTypeDocument = {
+    id,
+    name: params.name.trim(),
+    code: cleanCode,
+    description: params.description.trim(),
+    defaultPrice: Number(params.defaultPrice) || 0,
+    billingCycle: params.billingCycle || "yearly",
+    currency: "IDR",
+    defaultMaxStudents: Number(params.defaultMaxStudents) || 100,
+    defaultMaxTeachers: Number(params.defaultMaxTeachers) || 10,
+    defaultGracePeriodDays: params.defaultGracePeriodDays !== undefined ? Number(params.defaultGracePeriodDays) : 14,
+    allowedMaterialTiers: params.allowedMaterialTiers || ["standard"],
+    allowedCurriculumIds: params.allowedCurriculumIds || [],
+    includedMaterialIds: params.includedMaterialIds || [],
+    features: params.features || [],
+    isActive: true,
+    order: params.order ?? 99,
+    createdByUid: params.adminUid,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await collections.licenseTypes().doc(id).set(docData);
+  return id;
+}
+
+export async function updateLicenseType(id: string, params: {
+  name?: string;
+  description?: string;
+  defaultPrice?: number;
+  billingCycle?: 'yearly' | 'monthly' | 'one_time';
+  defaultMaxStudents?: number;
+  defaultMaxTeachers?: number;
+  defaultGracePeriodDays?: number;
+  allowedMaterialTiers?: ('standard' | 'multisensory_kit' | 'premium')[];
+  allowedCurriculumIds?: string[];
+  includedMaterialIds?: string[];
+  features?: string[];
+  isActive?: boolean;
+  order?: number;
+}): Promise<void> {
+  const ref = collections.licenseTypes().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new Error("Paket lisensi tidak ditemukan.");
+  }
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (params.name !== undefined) updateData.name = params.name.trim();
+  if (params.description !== undefined) updateData.description = params.description.trim();
+  if (params.defaultPrice !== undefined) updateData.defaultPrice = Number(params.defaultPrice);
+  if (params.billingCycle !== undefined) updateData.billingCycle = params.billingCycle;
+  if (params.defaultMaxStudents !== undefined) updateData.defaultMaxStudents = Number(params.defaultMaxStudents);
+  if (params.defaultMaxTeachers !== undefined) updateData.defaultMaxTeachers = Number(params.defaultMaxTeachers);
+  if (params.defaultGracePeriodDays !== undefined) updateData.defaultGracePeriodDays = Number(params.defaultGracePeriodDays);
+  if (params.allowedMaterialTiers !== undefined) updateData.allowedMaterialTiers = params.allowedMaterialTiers;
+  if (params.allowedCurriculumIds !== undefined) updateData.allowedCurriculumIds = params.allowedCurriculumIds;
+  if (params.includedMaterialIds !== undefined) updateData.includedMaterialIds = params.includedMaterialIds;
+  if (params.features !== undefined) updateData.features = params.features;
+  if (params.isActive !== undefined) updateData.isActive = Boolean(params.isActive);
+  if (params.order !== undefined) updateData.order = Number(params.order);
+
+  await ref.update(updateData);
+}
+
+export async function updateLicenseMaterials(id: string, params: {
+  allowedCurriculumIds?: string[];
+  includedMaterialIds?: string[];
+  allowedMaterialTiers?: ('standard' | 'multisensory_kit' | 'premium')[];
+}): Promise<void> {
+  const ref = collections.licenseTypes().doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new Error("Paket lisensi tidak ditemukan.");
+  }
+
+  const updateData: Record<string, any> = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (params.allowedCurriculumIds !== undefined) updateData.allowedCurriculumIds = params.allowedCurriculumIds;
+  if (params.includedMaterialIds !== undefined) updateData.includedMaterialIds = params.includedMaterialIds;
+  if (params.allowedMaterialTiers !== undefined) updateData.allowedMaterialTiers = params.allowedMaterialTiers;
+
+  await ref.update(updateData);
+}
+
+export async function toggleLicenseTypeStatus(id: string, isActive: boolean): Promise<void> {
+  const ref = collections.licenseTypes().doc(id);
+  await ref.update({
+    isActive: Boolean(isActive),
+    updatedAt: Timestamp.now(),
+  });
+}
+
+export async function getAllCurriculumsAndMaterials(): Promise<{
+  curriculums: CurriculumDocument[];
+  materials: LessonMaterialDocument[];
+}> {
+  const [currSnap, matSnap] = await Promise.all([
+    collections.curriculums().orderBy("gradeLevel", "asc").get(),
+    collections.lessonMaterials().orderBy("title", "asc").get(),
+  ]);
+
+  return {
+    curriculums: currSnap.docs.map(d => d.data() as CurriculumDocument),
+    materials: matSnap.docs.map(d => d.data() as LessonMaterialDocument),
+  };
+}
+
+export async function getLicenseTypeStats(): Promise<Record<string, number>> {
+  const licenses = await getAllBranchLicenses();
+  const stats: Record<string, number> = {};
+
+  licenses.forEach(lic => {
+    if (lic.isActive && lic.packageType) {
+      const code = lic.packageType.toLowerCase();
+      stats[code] = (stats[code] || 0) + 1;
+    }
+  });
+
+  return stats;
+}
+
 

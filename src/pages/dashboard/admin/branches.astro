@@ -1,13 +1,13 @@
 ---
 import { app } from "../../../firebase/server";
 import { getAuth } from "firebase-admin/auth";
-import { getUserProfile, getAllBranches, getAllBranchLicenses } from "../../../firebase/firestore";
+import { getUserProfile, getAllBranches, getAllBranchLicenses, getAllLicenseTypes } from "../../../firebase/firestore";
 import DashboardLayout from "../../../layouts/DashboardLayout.astro";
 import DashboardPageHeader from "../../../components/dashboard/DashboardPageHeader.astro";
 import DataMetricCard from "../../../components/dashboard/DataMetricCard.astro";
 import LicenseStatusBadge from "../../../components/dashboard/LicenseStatusBadge.astro";
 import BranchCreateModal from "../../../components/dashboard/BranchCreateModal.astro";
-import type { BranchDocument, BranchLicenseDocument } from "../../../types/database";
+import type { BranchDocument, BranchLicenseDocument, LicenseTypeDocument } from "../../../types/database";
 
 /* Verify user session & ensure HQ Admin role */
 const auth = getAuth(app);
@@ -36,6 +36,7 @@ if (!userProfile || userProfile.role !== "hq_admin") {
 // Fetch all branches & licenses
 const branches = await getAllBranches();
 const licenses = await getAllBranchLicenses();
+const licenseTypes = await getAllLicenseTypes();
 
 // Map branch licenses
 const licenseMap = new Map<string, BranchLicenseDocument>();
@@ -92,7 +93,14 @@ function formatDate(ts: any): string {
       { label: "Sekolah & Lisensi" }
     ]}
   >
-    <div slot="actions">
+    <div slot="actions" class="flex items-center gap-2">
+      <a 
+        href="/dashboard/admin/licenses" 
+        class="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-2xs no-underline"
+      >
+        <span>💳</span>
+        <span>Kelola Paket Lisensi</span>
+      </a>
       <button 
         type="button" 
         id="btn-open-create-branch" 
@@ -247,10 +255,25 @@ function formatDate(ts: any): string {
   </div>
 
   <!-- Create Branch Modal -->
-  <BranchCreateModal />
+  <BranchCreateModal licenseTypes={licenseTypes.filter(l => l.isActive)} />
 </DashboardLayout>
 
 <script>
+  // Auto-fill quotas on package change
+  const packageSelect = document.getElementById("b-package") as HTMLSelectElement | null;
+  const maxTeachersInput = document.getElementById("b-max-teachers") as HTMLInputElement | null;
+  const maxStudentsInput = document.getElementById("b-max-students") as HTMLInputElement | null;
+
+  packageSelect?.addEventListener("change", () => {
+    const opt = packageSelect.options[packageSelect.selectedIndex];
+    if (opt) {
+      const t = opt.getAttribute("data-max-teachers");
+      const s = opt.getAttribute("data-max-students");
+      if (t && maxTeachersInput) maxTeachersInput.value = t;
+      if (s && maxStudentsInput) maxStudentsInput.value = s;
+    }
+  });
+
   const searchInput = document.getElementById("search-branch") as HTMLInputElement | null;
   const rows = document.querySelectorAll<HTMLTableRowElement>(".branch-row");
 

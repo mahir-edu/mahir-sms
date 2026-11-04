@@ -295,6 +295,123 @@ async function seed() {
   }, { merge: true });
   console.log("✅ Created Prospect Parent: Amanda Putri (Active Prospect Lead)");
 
+  // 11. Master License Types / Packages
+  const licensePackages = [
+    {
+      id: "pkg-basic",
+      name: "Paket Basic Pemancar",
+      code: "basic",
+      description: "Paket lisensi awal untuk sekolah pemancar perintis dengan kebutuhan esensial kurikulum matematika.",
+      defaultPrice: 7500000,
+      billingCycle: "yearly",
+      currency: "IDR",
+      defaultMaxStudents: 50,
+      defaultMaxTeachers: 5,
+      defaultGracePeriodDays: 14,
+      allowedMaterialTiers: ["standard"],
+      allowedCurriculumIds: ["cur-math-sd-01"],
+      includedMaterialIds: ["mat-ws-math-01"],
+      features: [
+        "Akses Kurikulum Matematika Dasar (SD)",
+        "Lembar Kerja Siswa (Worksheets) Standar",
+        "Maksimal 50 Siswa & 5 Guru",
+        "Portal Presensi & Nilai Guru",
+        "Portal Wali Murid & Ananda",
+      ],
+      isActive: true,
+      order: 1,
+      createdByUid: hqAdminUid,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "pkg-standard",
+      name: "Paket Standard Pemancar",
+      code: "standard",
+      description: "Paket lisensi terpopuler untuk sekolah cabang aktif dengan dukungan modul manipulatif dan pelatihan guru.",
+      defaultPrice: 15000000,
+      billingCycle: "yearly",
+      currency: "IDR",
+      defaultMaxStudents: 150,
+      defaultMaxTeachers: 15,
+      defaultGracePeriodDays: 14,
+      allowedMaterialTiers: ["standard", "multisensory_kit"],
+      allowedCurriculumIds: ["cur-math-sd-01"],
+      includedMaterialIds: ["mat-ws-math-01", "mat-slide-math-01"],
+      features: [
+        "Semua Fitur Paket Basic",
+        "Kit Peraga Multisensori Digital (Slide Deck Interaktif)",
+        "Maksimal 150 Siswa & 15 Guru",
+        "Notifikasi Otomatis Email Orang Tua",
+        "Akses Workshop Nasional Mahir Edu",
+      ],
+      isActive: true,
+      order: 2,
+      createdByUid: hqAdminUid,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "pkg-premium",
+      name: "Paket Premium Multisensori",
+      code: "premium",
+      description: "Akses komprehensif ke seluruh pustaka ajar 5-pilar, kit cetak manipulatif, dan sertifikasi pendidik.",
+      defaultPrice: 25000000,
+      billingCycle: "yearly",
+      currency: "IDR",
+      defaultMaxStudents: 300,
+      defaultMaxTeachers: 30,
+      defaultGracePeriodDays: 14,
+      allowedMaterialTiers: ["standard", "multisensory_kit", "premium"],
+      allowedCurriculumIds: ["cur-math-sd-01"],
+      includedMaterialIds: ["mat-ws-math-01", "mat-slide-math-01"],
+      features: [
+        "Akses Seluruh Pustaka Materi (Standard + Multisensory Kit + Premium)",
+        "Alat Peraga Cetak & Panduan Guru Lengkap",
+        "Maksimal 300 Siswa & 30 Guru",
+        "Sertifikasi Pendidik Matematika Multisensori",
+        "Prioritas Konsultasi Pedagogis dari Kantor Pusat",
+      ],
+      isActive: true,
+      order: 3,
+      createdByUid: hqAdminUid,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "pkg-enterprise",
+      name: "Paket Enterprise Mitra Utama",
+      code: "enterprise",
+      description: "Solusi terintegrasi untuk jaringan sekolah besar, yayasan multi-kampus, atau mitra strategis.",
+      defaultPrice: 45000000,
+      billingCycle: "yearly",
+      currency: "IDR",
+      defaultMaxStudents: 500,
+      defaultMaxTeachers: 50,
+      defaultGracePeriodDays: 30,
+      allowedMaterialTiers: ["standard", "multisensory_kit", "premium"],
+      allowedCurriculumIds: ["cur-math-sd-01"],
+      includedMaterialIds: ["mat-ws-math-01", "mat-slide-math-01"],
+      features: [
+        "Akses Penuh Seluruh Kurikulum & Materi Tanpa Batas",
+        "Kapasitas Hingga 500 Siswa & 50 Guru",
+        "Masa Tenggang Pembayaran 30 Hari",
+        "Kustomisasi Branding & Modul Khusus Yayasan",
+        "Dukungan Tim Teknis & Akademik Khusus (Dedicated)",
+      ],
+      isActive: true,
+      order: 4,
+      createdByUid: hqAdminUid,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
+  for (const pkg of licensePackages) {
+    await db.collection("license_types").doc(pkg.id).set(pkg, { merge: true });
+  }
+  console.log("✅ Seeded 4 Master License Packages (Basic, Standard, Premium, Enterprise)");
+
   console.log("🎉 Seeding completed successfully!");
 }
 
