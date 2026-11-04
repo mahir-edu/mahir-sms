@@ -1086,12 +1086,12 @@ export async function renewBranchLicense(licenseId: string, params: {
 // 12. Master License Type & Package Management Helpers
 // ==========================================
 export async function getAllLicenseTypes(includeInactive = false): Promise<LicenseTypeDocument[]> {
-  let query = collections.licenseTypes().orderBy("order", "asc") as FirebaseFirestore.Query;
+  const snapshot = await collections.licenseTypes().get();
+  let list = snapshot.docs.map(doc => doc.data() as LicenseTypeDocument);
   if (!includeInactive) {
-    query = query.where("isActive", "==", true);
+    list = list.filter(item => item.isActive !== false);
   }
-  const snapshot = await query.get();
-  return snapshot.docs.map(doc => doc.data() as LicenseTypeDocument);
+  return list.sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
 }
 
 export async function getLicenseTypeById(id: string): Promise<LicenseTypeDocument | null> {
